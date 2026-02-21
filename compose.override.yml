@@ -1,0 +1,11 @@
+services:
+  fcp-sfd-portal-stub:
+    ports:
+      - '3020:3020'
+    networks:
+      - fcp-sfd
+
+networks:
+  fcp-sfd:
+    driver: bridge
+    name: fcp-sfd

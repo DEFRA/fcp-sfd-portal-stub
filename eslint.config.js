@@ -1,8 +1,13 @@
 import neostandard from 'neostandard'
 
-export default neostandard({
-  env: ['node', 'vitest'],
-  ignores: [...neostandard.resolveIgnoresFromGitignore()],
-  noJsx: true,
-  noStyle: true
+const eslint = neostandard({
+  ignores: ['.public/**']
 })
+
+for (const item of eslint) {
+  if (item?.languageOptions?.ecmaVersion < 2025) {
+    item.languageOptions.ecmaVersion = 2025
+  }
+}
+
+export default eslint
