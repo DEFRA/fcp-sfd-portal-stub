@@ -1,0 +1,112 @@
+{% extends "layouts.njk" %}
+
+{% set pageTitle = "Processing your upload" %}
+
+{% block head %}
+  {{ super() }}
+  <meta http-equiv="refresh" content="3;url=/document-upload/check-status">
+{% endblock %}
+
+{% block content %}
+<div class="govuk-grid-row">
+  <div class="govuk-grid-column-two-thirds">
+
+    <h1 class="govuk-heading-l">{{ pageTitle }}</h1>
+
+    <p class="govuk-body-l">
+      Please wait while we scan your files for viruses.
+    </p>
+
+    <p class="govuk-body">
+      Your upload reference: <strong>{{ reference }}</strong>
+    </p>
+
+    <div class="govuk-inset-text">
+      <p class="govuk-body">
+        <span class="govuk-!-font-weight-bold">Scanning {{ numberOfFiles }} file{% if numberOfFiles != 1 %}s{% endif %}...</span>
+      </p>
+      <p class="govuk-body govuk-!-margin-bottom-0">
+        This page will automatically refresh every few seconds.
+      </p>
+    </div>
+
+    <p class="govuk-body">
+      <a href="/document-upload/check-status" class="govuk-link">Check status now</a>
+    </p>
+
+    <details class="govuk-details">
+      <summary class="govuk-details__summary">
+        <span class="govuk-details__summary-text">
+          What happens during scanning?
+        </span>
+      </summary>
+      <div class="govuk-details__text">
+        <p class="govuk-body">We check each file to ensure it is:</p>
+        <ul class="govuk-list govuk-list--bullet">
+          <li>free from viruses and malware</li>
+          <li>in an accepted file format</li>
+          <li>not corrupted or damaged</li>
+        </ul>
+        <p class="govuk-body">
+          This usually takes less than a minute, but may take longer for large files or multiple uploads.
+        </p>
+      </div>
+    </details>
+
+    <p class="govuk-body">
+      <strong>Do not close this page</strong> - you will be automatically redirected when scanning is complete.
+    </p>
+
+    <details class="govuk-details">
+      <summary class="govuk-details__summary">
+        <span class="govuk-details__summary-text">
+          Upload details
+        </span>
+      </summary>
+      <div class="govuk-details__text">
+        <dl class="govuk-summary-list">
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">
+              Submission ID
+            </dt>
+            <dd class="govuk-summary-list__value">
+              {{ submissionId }}
+            </dd>
+          </div>
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">
+              Reference
+            </dt>
+            <dd class="govuk-summary-list__value">
+              {{ reference }}
+            </dd>
+          </div>
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">
+              Status
+            </dt>
+            <dd class="govuk-summary-list__value">
+              {{ uploadStatus | capitalize }}
+            </dd>
+          </div>
+          {% if uploadedFiles and uploadedFiles.length > 0 %}
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">
+              Files being scanned
+            </dt>
+            <dd class="govuk-summary-list__value">
+              <ul class="govuk-list govuk-list--bullet">
+                {% for filename in uploadedFiles %}
+                <li>{{ filename }}</li>
+                {% endfor %}
+              </ul>
+            </dd>
+          </div>
+          {% endif %}
+        </dl>
+      </div>
+    </details>
+
+  </div>
+</div>
+{% endblock %}

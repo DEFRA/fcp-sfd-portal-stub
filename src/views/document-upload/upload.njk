@@ -1,0 +1,97 @@
+{% extends "layouts.njk" %}
+
+{% set pageTitle = "Upload files" %}
+
+{% block content %}
+<div class="govuk-grid-row">
+  <div class="govuk-grid-column-two-thirds">
+
+    <h1 class="govuk-heading-xl govuk-!-margin-bottom-3">
+      {{ pageTitle }}
+    </h1>
+
+    <div class="govuk-warning-text">
+      <span class="govuk-warning-text__icon" aria-hidden="true">!</span>
+      <strong class="govuk-warning-text__text">
+        <span class="govuk-visually-hidden">Warning</span>
+        Keep your own copies of anything you send us.
+      </strong>
+    </div>
+
+    <p class="govuk-body">
+      You can upload up to 10 files in one batch.
+    </p>
+    
+    <p class="govuk-body">
+      The size of each file must be less than 10MB, and files must be in one of these formats: doc, docx, docm,
+      gif, jfif, jpeg, jpg, odt, pdf, pptx, tiff, txt, xls, xlsx, xlsm.
+    </p>
+
+    <p class="govuk-body">
+      Each file name must be unique, 20 characters or less, contain only letters and numbers, and contain no gaps.
+    </p>
+
+    <!-- Upload form - JavaScript handles submission with redirect: 'manual' as required by CDP Uploader -->
+    <form id="document-upload-form" method="post" action="{{ uploadUrl }}" enctype="multipart/form-data">
+      
+      <!-- Include all metadata as hidden fields -->
+      <input type="hidden" name="sbi" value="{{ metadata.sbi }}">
+      <input type="hidden" name="crn" value="{{ metadata.crn }}">
+      <input type="hidden" name="frn" value="{{ metadata.frn }}">
+      <input type="hidden" name="submissionId" value="{{ metadata.submissionId }}">
+      <input type="hidden" name="uosr" value="{{ metadata.uosr }}">
+      <input type="hidden" name="submissionDateTime" value="{{ metadata.submissionDateTime }}">
+      <input type="hidden" name="filesInSubmission" value="1">
+      <input type="hidden" name="type" value="{{ metadata.type }}">
+      <input type="hidden" name="reference" value="{{ metadata.reference }}">
+      <input type="hidden" name="service" value="{{ metadata.service }}">
+      
+      <div class="govuk-form-group">
+        <label class="govuk-label govuk-label--s" for="file-upload">
+          Choose files
+        </label>
+        <input class="govuk-file-upload" id="file-upload" name="file-upload" type="file" multiple required>
+      </div>
+
+      <button type="submit" class="govuk-button" data-module="govuk-button" data-prevent-double-click="true">
+        Upload files
+      </button>
+      
+      <p class="govuk-body">
+        <a class="govuk-link" href="/document-upload/sign-in">Cancel</a>
+      </p>
+    </form>
+
+    <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
+
+    <h2 class="govuk-heading-m">Upload details</h2>
+    <dl class="govuk-summary-list">
+      <div class="govuk-summary-list__row">
+        <dt class="govuk-summary-list__key">
+          Submission ID
+        </dt>
+        <dd class="govuk-summary-list__value">
+          {{ metadata.submissionId }}
+        </dd>
+      </div>
+      <div class="govuk-summary-list__row">
+        <dt class="govuk-summary-list__key">
+          Reference
+        </dt>
+        <dd class="govuk-summary-list__value">
+          {{ metadata.reference }}
+        </dd>
+      </div>
+      <div class="govuk-summary-list__row">
+        <dt class="govuk-summary-list__key">
+          SBI
+        </dt>
+        <dd class="govuk-summary-list__value">
+          {{ metadata.sbi }}
+        </dd>
+      </div>
+    </dl>
+
+  </div>
+</div>
+{% endblock %}

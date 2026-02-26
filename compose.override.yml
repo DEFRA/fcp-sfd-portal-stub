@@ -2,6 +2,7 @@ services:
   fcp-sfd-portal-stub:
     ports:
       - '3020:3020'
+      - '9329:9229'
     networks:
       - fcp-sfd
 

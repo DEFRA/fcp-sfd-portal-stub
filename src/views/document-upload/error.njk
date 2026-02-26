@@ -1,0 +1,126 @@
+{% extends "layouts.njk" %}
+
+{% set pageTitle = "Upload failed" %}
+
+{% block content %}
+<div class="govuk-grid-row">
+  <div class="govuk-grid-column-two-thirds">
+
+    <h1 class="govuk-heading-l">{{ pageTitle }}</h1>
+
+    <div class="govuk-error-summary" aria-labelledby="error-summary-title" role="alert" data-module="govuk-error-summary">
+      <h2 class="govuk-error-summary__title" id="error-summary-title">
+        There is a problem with your upload
+      </h2>
+      <div class="govuk-error-summary__body">
+        <p class="govuk-body">
+          {% if numberOfRejectedFiles > 0 %}
+            {{ numberOfRejectedFiles }} file{% if numberOfRejectedFiles != 1 %}s were{% else %} was{% endif %} rejected.
+          {% else %}
+            Your files could not be uploaded.
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
+    <h2 class="govuk-heading-m">Why files may be rejected</h2>
+
+    <p class="govuk-body">Files can be rejected for several reasons:</p>
+    <ul class="govuk-list govuk-list--bullet">
+      <li>the file contains a virus or malware</li>
+      <li>the file type is not supported</li>
+      <li>the file is corrupted or cannot be read</li>
+      <li>the file is too large</li>
+    </ul>
+
+    <h2 class="govuk-heading-m">What you can do</h2>
+
+    <p class="govuk-body">To continue with your submission:</p>
+    <ol class="govuk-list govuk-list--number">
+      <li>Check the file on your computer with antivirus software</li>
+      <li>Make sure the file is in a supported format (PDF, JPG, PNG, DOC, DOCX)</li>
+      <li>Try uploading a different version of the file</li>
+      <li>If the problem continues, contact support</li>
+    </ol>
+
+    <details class="govuk-details">
+      <summary class="govuk-details__summary">
+        <span class="govuk-details__summary-text">
+          Upload details
+        </span>
+      </summary>
+      <div class="govuk-details__text">
+        <dl class="govuk-summary-list">
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">
+              Submission ID
+            </dt>
+            <dd class="govuk-summary-list__value">
+              {{ submissionId }}
+            </dd>
+          </div>
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">
+              Reference
+            </dt>
+            <dd class="govuk-summary-list__value">
+              {{ reference }}
+            </dd>
+          </div>
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">
+              Status
+            </dt>
+            <dd class="govuk-summary-list__value">
+              <strong class="govuk-tag govuk-tag--red">
+                Rejected
+              </strong>
+            </dd>
+          </div>
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">
+              Files rejected
+            </dt>
+            <dd class="govuk-summary-list__value">
+              {{ numberOfRejectedFiles }} of {{ numberOfFiles }}
+            </dd>
+          </div>
+          {% if uploadedFiles and uploadedFiles.length > 0 %}
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">
+              Rejected files
+            </dt>
+            <dd class="govuk-summary-list__value">
+              <ul class="govuk-list govuk-list--bullet">
+                {% for filename in uploadedFiles %}
+                <li>{{ filename }}</li>
+                {% endfor %}
+              </ul>
+            </dd>
+          </div>
+          {% endif %}
+        </dl>
+      </div>
+    </details>
+
+    <p class="govuk-body">
+      <a href="/document-upload/sign-in" class="govuk-button" data-module="govuk-button">
+        Try uploading again
+      </a>
+    </p>
+
+    <p class="govuk-body">
+      If you continue to experience problems, you can:
+    </p>
+    <ul class="govuk-list govuk-list--bullet">
+      <li>
+        <a href="mailto:support@defra.gov.uk" class="govuk-link">contact support by email</a>
+      </li>
+      <li>
+        call our helpline on <strong>03000 200 301</strong>
+      </li>
+    </ul>
+
+  </div>
+</div>
+{% endblock %}
