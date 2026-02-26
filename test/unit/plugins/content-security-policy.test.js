@@ -31,8 +31,12 @@ describe('contentSecurityPolicy', () => {
     expect(contentSecurityPolicy.options.frameAncestors).toEqual(['self'])
   })
 
-  test('should restrict the form action to self and any other origins', () => {
-    expect(contentSecurityPolicy.options.formAction).toEqual(['self', '*'])
+  test('should restrict the form action to self and CDP domains', () => {
+    expect(contentSecurityPolicy.options.formAction).toEqual(['self', 'https://*.cdp-int.defra.cloud'])
+  })
+
+  test('should allow connections to self and CDP domains', () => {
+    expect(contentSecurityPolicy.options.connectSrc).toEqual(['self', 'https://*.cdp-int.defra.cloud'])
   })
 
   test('should generate nonces', () => {

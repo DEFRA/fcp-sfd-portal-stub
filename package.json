@@ -10,8 +10,8 @@
   },
   "scripts": {
     "build:frontend": "NODE_ENV=production webpack",
-    "dev": "npm run frontend:watch & npm run server:watch wait",
-    "dev:debug": "npm run frontend:watch & server:debug wait",
+    "dev": "npm run frontend:watch & npm run server:watch",
+    "dev:debug": "npm run frontend:watch & npm run server:debug",
     "docker:build": "docker compose build",
     "docker:dev": "docker compose up",
     "docker:test": "npm run lint && mkdir -p coverage 2>/dev/null || true && docker compose -p fcp-sfd-portal-stub-test down -v && docker compose -f compose.yml -f compose.test.yml -p fcp-sfd-portal-stub-test run --build --rm fcp-sfd-portal-stub",

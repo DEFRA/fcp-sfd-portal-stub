@@ -1,0 +1,94 @@
+{% extends "layouts.njk" %}
+{% from "govuk/components/error-summary/macro.njk" import govukErrorSummary %}
+
+{% set pageTitle = "Enter document details" %}
+
+{% block content %}
+<div class="govuk-grid-row">
+  <div class="govuk-grid-column-two-thirds">
+
+    {% if error %}
+      {{ govukErrorSummary({
+        titleText: "There is a problem",
+        errorList: [
+          {
+            text: error,
+            href: "#sbi"
+          }
+        ]
+      }) }}
+    {% endif %}
+
+    <form method="post" action="/document-upload/metadata">
+
+      <h1 class="govuk-heading-xl">{{ pageTitle }}</h1>
+
+      <p class="govuk-body">
+        Provide details about the documents you want to upload.
+      </p>
+
+      <div class="govuk-form-group">
+        <label class="govuk-label" for="sbi">
+          Single Business Identifier (SBI)
+        </label>
+        <div id="sbi-hint" class="govuk-hint">
+          This is your 9-digit farm business number.
+        </div>
+        <input class="govuk-input govuk-input--width-10" id="sbi" name="sbi" type="text" value="123456789" required>
+      </div>
+
+      <div class="govuk-form-group">
+        <label class="govuk-label" for="frn">
+          Firm Reference Number (FRN)
+        </label>
+        <div id="frn-hint" class="govuk-hint">
+          This is your 10-digit firm reference number.
+        </div>
+        <input class="govuk-input govuk-input--width-10" id="frn" name="frn" type="text" value="1234567890" required>
+      </div>
+
+      <div class="govuk-form-group">
+        <label class="govuk-label" for="reference">
+          Reference
+        </label>
+        <div id="reference-hint" class="govuk-hint">
+          Enter your own reference for this submission (for example, an agreement number or claim reference).
+        </div>
+        <input class="govuk-input govuk-input--width-20" id="reference" name="reference" type="text" value="TEST-REF-001" required>
+      </div>
+
+      <div class="govuk-form-group">
+        <fieldset class="govuk-fieldset">
+          <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">
+            <h2 class="govuk-fieldset__heading">
+              What relates to this document?
+            </h2>
+          </legend>
+          <div class="govuk-radios" data-module="govuk-radios">
+            <div class="govuk-radios__item">
+              <input class="govuk-radios__input" id="type" name="type" type="radio" value="CS_Agreement_Evidence" checked>
+              <label class="govuk-label govuk-radios__label" for="type">
+                Countryside Stewardship agreement evidence
+              </label>
+            </div>
+            <div class="govuk-radios__item">
+              <input class="govuk-radios__input" id="type" name="type" type="radio" value="Delinked_Payments">
+              <label class="govuk-label govuk-radios__label" for="type">
+                Delinked payments
+              </label>
+            </div>
+          </div>
+        </fieldset>
+      </div>
+
+      <input type="hidden" name="crn" value="{{ crn }}">
+      <input type="hidden" name="service" value="fcp-sfd-frontend">
+
+      <button type="submit" class="govuk-button" data-module="govuk-button">
+        Continue
+      </button>
+    </form>
+
+  </div>
+</div>
+{% endblock %}

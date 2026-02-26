@@ -10,8 +10,10 @@ export const contentSecurityPolicy = {
     scriptSrc: ['self', "'sha256-GUQ5ad8JK5KmEWmROf3LZd9ge94daqNvd8xy9YS1iDw='"],
     styleSrc: ['self'],
     frameAncestors: ['self'],
-    formAction: ['self', '*'],
+    formAction: ['self', 'https://*.cdp-int.defra.cloud'],
     manifestSrc: ['self'],
+    // Allow fetch() requests to CDP Uploader across environments
+    connectSrc: ['self', 'https://*.cdp-int.defra.cloud'],
     generateNonces: true
   }
 }

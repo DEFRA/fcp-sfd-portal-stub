@@ -1,18 +1,362 @@
-# fcp-sfd-portal-stub
+# FCP Rural Payments Portal Stub
+
+A reference implementation demonstrating how client portals (such as the Rural Payments portal) can integrate with the **Single Front Door (SFD) Document Upload Service**.
+
+This stub showcases the complete integration pattern including authentication, metadata submission, browser-based file uploads, and status tracking through the SFD infrastructure.
+
+> **IMPORTANT**: This particular pattern is still a work in progress that is in the process of being verified.  Once confirmed, this warning will be removed.
+>
+> For latest progress contact John Watson (john.watson1@defra.gov.uk).
+
+## Purpose
+
+This stub portal serves as a **working example** for external teams integrating their portals with the SFD Document Upload Service. It demonstrates:
+
+- How to authenticate with the Object Processor using AWS Cognito (via CDP API Gateway)
+- How to initiate upload sessions with business metadata
+- How to integrate with the CDP Uploader for secure, browser-based file uploads
+- How to poll for upload status and display results to users
+
+## Architecture Overview
+
+The SFD Document Upload Service consists of three main components working together:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User as User Browser
+    participant Portal as Portal Stub<br/>(This Service)
+    participant Cognito as AWS Cognito<br/>(CDP API Gateway)
+    participant Processor as Object Processor<br/>(SFD Document Upload API)
+    participant Uploader as CDP Uploader
+    participant S3 as AWS S3<br/>(SFD File Storage)
+
+    Note over Portal: Mandatory metadata collected CRN, SBI, FRN,<br/>reference, document type
+    
+    Portal->>+Cognito: POST /oauth2/token<br/>(client_credentials)
+    Cognito-->>-Portal: Access Token (JWT)
+    
+    Portal->>+Processor: POST /api/v1/initiate<br/>Authorization: Bearer {token}<br/>Metadata (SBI, CRN, FRN, etc.)
+    Processor->>+Uploader: POST /initiate<br/>(forward request)
+    Uploader-->>-Processor: { uploadId, uploadUrl, statusUrl }
+    Note over Processor: Transform response:<br/>- Generate correlationId<br/>- Prefix uploadUrl with domain<br/>- Replace statusUrl with own endpoint
+    Processor-->>-Portal: { correlationId, uploadId, uploadUrl, statusUrl }
+    
+    Note over Portal,User: Portal displays upload form<br/>with uploadUrl action
+    
+    User->>+Uploader: POST {uploadUrl}<br/>multipart/form-data (files)
+    Uploader->>Uploader: Virus scan files
+    Uploader->>S3: Upload files to S3
+    Uploader-->>Processor: POST /api/v1/callback<br/>(scan results)
+    Uploader-->>-User: 302 Redirect (upload accepted)
+    
+    Note over User,Portal: Browser redirects to processing page
+    
+    loop Every 3 seconds
+        Portal->>+Processor: GET {statusUrl}<br/>Authorization: Bearer {token}
+        Processor-->>-Portal: { status: IN_PROGRESS/SUCCESSFUL/REJECTED }
+    end
+    
+    Note over Portal,User: Display success/error page
+```
+
+### Component Roles
+
+**Portal Stub (this repository)**  
+- Client-facing GOV.UK frontend application
+- Collects business metadata (CRN, SBI, FRN, document type, reference)
+- Obtains OAuth2 tokens from AWS Cognito
+- Calls Object Processor APIs to initiate uploads and check status
+- Posts files to CDP Uploader via the browser for file uploads
+
+**Object Processor** ([DEFRA/fcp-sfd-object-processor](https://github.com/DEFRA/fcp-sfd-object-processor))
+- **The face of the SFD Document Upload Service**
+- Acts as an intermediary between clients and CDP Uploader
+- Validates JWT tokens from Cognito via Microsoft Entra ID
+- Provides `/api/v1/initiate` endpoint to create upload sessions
+- Provides `/api/v1/status/{correlationId}` endpoint to query upload status
+- Receives callbacks from CDP Uploader when files are scanned
+- Persists metadata to MongoDB and publishes events to AWS SNS
+
+**CDP Uploader** ([DEFRA/cdp-uploader](https://github.com/DEFRA/cdp-uploader))
+- Handles browser-based file uploads via multipart form submissions
+- Performs virus scanning using ClamAV
+- Uploads clean files to AWS S3
+- Sends scan results back to Object Processor via callback endpoint
+- Responds to browser with 302 redirect on successful upload acceptance
+
+## Dependencies
+
+### Object Processor (Required)
+
+This stub **requires** the Object Processor to be running. By default, it expects the Object Processor to be available within the same Docker network at:
+
+```
+http://fcp-sfd-object-processor:3004
+```
+
+This works automatically when both services run in the same Docker network (e.g., via `docker compose` in the parent `fcp-sfd-core` repository).
+
+**To override the Object Processor location**, set the environment variable:
+
+```bash
+OBJECT_PROCESSOR_HOST=http://your-object-processor-host:3004
+```
+
+### CDP Uploader (Required)
+
+The CDP Uploader handles file uploads from the user's browser. The upload URL is provided by the Object Processor in the `/api/v1/initiate` response.
+
+The URL uses the full CDP domain:
+
+```
+https://cdp-uploader.{env}.cdp-int.defra.cloud/upload-and-scan/{uploadId}
+```
+
+The browser submits files directly to this URL, bypassing the portal backend entirely.
+
+## Authentication with Cognito
+
+The portal authenticates with the Object Processor using **AWS Cognito** via the **CDP API Gateway**.
+
+### Cognito Configuration
+
+Required environment variables (see [.env.example](.env.example)):
+
+```bash
+# Enable/disable Cognito authentication
+COGNITO_ENABLED=false              # Set to 'true' for production
+
+# Cognito OAuth2 settings (required when COGNITO_ENABLED=true)
+COGNITO_DOMAIN=your-app.auth.eu-west-2.amazoncognito.com
+COGNITO_CLIENT_ID=your-client-id-here
+COGNITO_CLIENT_SECRET=your-client-secret-here
+```
+
+### Disabling Cognito for Local Development
+
+By default, Cognito is **disabled** for easier local development:
+
+```bash
+COGNITO_ENABLED=false
+```
+
+When disabled:
+- No OAuth2 tokens are obtained or sent
+- Object Processor must have `AUTH_ENABLED=false` to accept unauthenticated requests
+- Perfect for local testing without AWS infrastructure
+
+To enable Cognito:
+
+1. Set `COGNITO_ENABLED=true` in `.env`
+2. Configure the three `COGNITO_*` variables
+3. Ensure Object Processor has `AUTH_ENABLED=true`
+4. Restart the service
+
+## Environment Variables
+
+Copy [.env.example](.env.example) to `.env` and configure as needed:
+
+```bash
+# Copy the example file
+cp .env.example .env
+
+# Edit with your values
+vi .env
+```
+
+**Example configuration** (from `.env.example`):
+
+```bash
+# Enable Cognito authentication (default: false for local dev)
+COGNITO_ENABLED=true
+
+# AWS Cognito OAuth2 settings
+COGNITO_DOMAIN=your-service-c63f2.auth.eu-west-2.amazoncognito.com
+COGNITO_CLIENT_ID=your-app-client-id-here
+COGNITO_CLIENT_SECRET=your-app-client-secret-here
+
+# Object Processor location (default: docker network service name)
+# Override this if running Object Processor elsewhere
+OBJECT_PROCESSOR_HOST=http://fcp-sfd-object-processor:3004
+```
+
+## Browser-Based Upload Nuances
+
+The upload process uses **direct browser-to-CDP-Uploader communication** rather than proxying files through the portal backend. This is important for scalability and security.
+
+### How It Works
+
+1. **Portal calls Object Processor** `/api/v1/initiate` and receives upload details
+2. **Portal renders a form** with `action="{uploadUrl}"` pointing directly at CDP Uploader
+3. **User selects files** in their browser
+4. **JavaScript intercepts the form submission** and uses `fetch()` to POST files to CDP Uploader
+5. **CDP Uploader responds** with a `302 redirect` when upload is accepted
+6. **JavaScript detects the redirect** (`response.type === 'opaqueredirect'`) and navigates to the processing page
+
+### Object Processor Response
+
+When you call `/api/v1/initiate`, the Object Processor forwards the request to CDP Uploader's `/initiate` endpoint, which returns:
+
+```json
+{
+  "uploadId": "fc730e47-73c6-4219-a3c5-49b6dfce6e71",
+  "uploadUrl": "/upload-and-scan/fc730e47-73c6-4219-a3c5-49b6dfce6e71",
+  "statusUrl": "https://cdp-uploader.{env}.cdp-int.defra.cloud/status/fc730e47-73c6-4219-a3c5-49b6dfce6e71"
+}
+```
+
+The Object Processor then **transforms** this response to provide a client-facing API:
+
+```json
+{
+  "correlationId": "3f8a6c92-7b41-4e5d-9c2a-1f7b8d3e6a54",
+  "uploadId": "fc730e47-73c6-4219-a3c5-49b6dfce6e71",
+  "uploadUrl": "https://cdp-uploader.{env}.cdp-int.defra.cloud/upload-and-scan/fc730e47-73c6-4219-a3c5-49b6dfce6e71",
+  "statusUrl": "https://fcp-sfd-object-processor.{env}.cdp-int.defra.cloud/status/3f8a6c92-7b41-4e5d-9c2a-1f7b8d3e6a54"
+}
+```
+
+**Transformation Details:**
+- **`correlationId`** - Newly generated by Object Processor for tracking this upload session
+- **`uploadId`** - Passed through unchanged from CDP Uploader
+- **`uploadUrl`** - CDP Uploader's relative path prefixed with full domain
+- **`statusUrl`** - Replaced with Object Processor's endpoint using `correlationId` (instead of CDP Uploader's endpoint with `uploadId`)
+
+**Why the transformation?**
+- Portals interact only with Object Processor, never directly with CDP Uploader APIs
+- Object Processor maintains its own correlation tracking separate from CDP's upload IDs
+- Status checks route through Object Processor, which aggregates CDP status with its own metadata
+- Provides a consistent API abstraction layer for SFD Document Upload Service
+
+**Field Descriptions:**
+- `correlationId` - Object Processor's tracking ID for this upload session
+- `uploadId` - CDP Uploader's upload identifier
+- `uploadUrl` - Direct URL for browser to POST files to CDP Uploader (only browser-to-CDP communication)
+- `statusUrl` - URL to poll for upload status through Object Processor (uses `correlationId`)
+
+In local development, the URLs use `localhost` domains (e.g., `http://cdp-uploader:7337/upload-and-scan/{uploadId}`).
+
+### Why 302 Redirect Handling?
+
+CDP Uploader returns a `302 redirect` response when it accepts an upload for processing. Due to CORS and browser security:
+
+- The redirect is **opaque** to JavaScript (no headers or body accessible)
+- We detect it by checking `response.type === 'opaqueredirect'` or `response.status === 302`
+- On detection, we programmatically navigate to `/document-upload/processing`
+
+See [src/client/javascript/document-upload.js](src/client/javascript/document-upload.js):
+
+```javascript
+// CDP Uploader may respond with 302 redirect when upload is accepted
+if (response.type === 'opaqueredirect' || response.status === 302 || response.status === 0) {
+  // Upload accepted; scanning in progress
+  window.location.href = '/document-upload/processing'
+}
+```
+
+### Security Benefits
+
+- **No file data passes through the portal server** (reduces bandwidth and attack surface)
+- **Direct S3 access** from CDP Uploader (faster, more scalable)
+- **Virus scanning happens before storage** (CDP Uploader scans then uploads to S3)
+- **Portal only handles metadata** (lightweight API calls)
+
+## Running Locally
+
+### Prerequisites
+
+- Docker and Docker Compose
+
+### Quick Start
+
+```bash
+docker compose up
+```
+
+## User Journey
+
+The portal implements a 6-step user journey following GOV.UK Design System patterns:
+
+1. **Sign In** ([/document-upload/sign-in](http://localhost:3020/document-upload/sign-in))
+   - User enters their 10-digit CRN (Customer Reference Number)
+   - CRN stored in session cookie
+
+2. **Enter Metadata** ([/document-upload/metadata](http://localhost:3020/document-upload/metadata))
+   - **SBI** (Single Business Identifier) - 9 digits
+   - **FRN** (Firm Reference Number) - 10 digits
+   - **Reference** - User's own reference text
+   - **Type** - Document type (e.g., CS_Agreement_Evidence)
+   - **Service** - Source system (fcp-sfd-frontend or rps-portal)
+
+3. **Upload Files** ([/document-upload/upload](http://localhost:3020/document-upload/upload))
+   - Portal calls Object Processor `/api/v1/initiate` with metadata
+   - Receives `correlationId`, `uploadId`, `uploadUrl`, and `statusUrl` from Object Processor
+   - Browser submits files directly to CDP Uploader using `uploadUrl`
+   - CDP Uploader responds with 302 redirect on acceptance
+
+4. **Processing** ([/document-upload/processing](http://localhost:3020/document-upload/processing))
+   - Auto-polls Object Processor using `statusUrl` every 3 seconds
+   - Shows scanning progress (IN_PROGRESS → SUCCESSFUL/REJECTED)
+   - CDP Uploader performs virus scan and uploads to S3 in background
+
+5. **Success** ([/document-upload/success](http://localhost:3020/document-upload/success))
+   - Displays confirmation with submission ID
+   - Lists uploaded files and metadata
+
+6. **Error** ([/document-upload/error](http://localhost:3020/document-upload/error))
+   - Shown if files rejected (e.g., virus detected)
+   - Displays rejection reason and affected files
 
 ## Testing
 
-To run the tests for the stub:
+### Unit Tests
 
 ```bash
+# Run all tests
 npm run docker:test
-```
 
-Tests can also be run in watch mode to support Test Driven Development (TDD):
-
-```bash
+# Run tests in watch mode (TDD)
 npm run docker:test:watch
+
+# Run linter
+npm run lint
+
+# Fix linting issues
+npm run lint:fix
 ```
+
+### Manual Testing in Browser
+
+1. Start both Object Processor and Portal Stub (see "Running Locally" above)
+2. Navigate to [http://localhost:3020/document-upload/sign-in](http://localhost:3020/document-upload/sign-in)
+3. Enter CRN: `1234567890`
+4. Click "Continue"
+5. Fill in metadata:
+   - SBI: `123456789`
+   - FRN: `1234567890`
+   - Reference: `Test Upload`
+   - Type: Select "CS Agreement Evidence"
+   - Service: Select "FCP SFD Frontend"
+6. Click "Continue"
+7. Select a file to upload
+8. Click "Upload documents"
+9. Wait for processing (auto-refreshes every 3 seconds)
+10. View success or error page
+
+## Key Files
+
+- [src/routes/document-upload.js](src/routes/document-upload.js) - 6 route handlers for upload journey
+- [src/client/javascript/document-upload.js](src/client/javascript/document-upload.js) - Browser upload with 302 redirect handling
+- [src/common/helpers/cognito.js](src/common/helpers/cognito.js) - Cognito OAuth2 client with token caching
+- [src/common/helpers/object-processor.js](src/common/helpers/object-processor.js) - Object Processor API client (`initiate`, `status`)
+- [src/config/config.js](src/config/config.js) - Convict configuration schema
+- [.env.example](.env.example) - Environment variable template
+
+## Related Repositories
+
+- **Object Processor**: [DEFRA/fcp-sfd-object-processor](https://github.com/DEFRA/fcp-sfd-object-processor) - SFD Document Upload API
+- **CDP Uploader**: [DEFRA/cdp-uploader](https://github.com/DEFRA/cdp-uploader) - File upload and virus scanning service
 
 ## Licence
 

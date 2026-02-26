@@ -161,6 +161,58 @@ export const config = convict({
       default: isProduction,
       env: 'SECURE_COOKIE'
     }
+  },
+  aws: {
+    region: {
+      doc: 'AWS Region',
+      format: String,
+      default: 'eu-west-2',
+      env: 'AWS_REGION'
+    },
+    endpoint: {
+      doc: 'AWS Endpoint URL (for LocalStack)',
+      format: String,
+      nullable: true,
+      default: null,
+      env: 'AWS_ENDPOINT_URL'
+    }
+  },
+  cognito: {
+    enabled: {
+      doc: 'Use AWS Cognito for authentication (when false, no authentication is used for local development)',
+      format: Boolean,
+      default: false,
+      env: 'COGNITO_ENABLED'
+    },
+    domain: {
+      doc: 'AWS Cognito Domain (e.g., your-domain.auth.eu-west-2.amazoncognito.com)',
+      format: String,
+      nullable: true,
+      default: null,
+      env: 'COGNITO_DOMAIN'
+    },
+    clientId: {
+      doc: 'AWS Cognito App Client ID',
+      format: String,
+      nullable: true,
+      default: null,
+      env: 'COGNITO_CLIENT_ID'
+    },
+    clientSecret: {
+      doc: 'AWS Cognito App Client Secret',
+      format: String,
+      nullable: true,
+      default: null,
+      env: 'COGNITO_CLIENT_SECRET'
+    }
+  },
+  objectProcessor: {
+    host: {
+      doc: 'Object Processor API URL',
+      format: String,
+      default: null,
+      env: 'OBJECT_PROCESSOR_HOST'
+    }
   }
 })
 
