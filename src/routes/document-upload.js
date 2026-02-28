@@ -218,9 +218,9 @@ export const successGet = {
         pageTitle: 'Upload successful',
         submissionId,
         reference: metadata.reference,
-        uploadStatus: status.uploadStatus,
+        uploadStatus: status.status,
         numberOfFiles: status.numberOfFiles || uploadedFiles.length,
-        uploadedFiles
+        uploadedFiles: status.fileNames || uploadedFiles
       })
     } catch (error) {
       request.logger.error({ error }, 'Failed to get upload status')

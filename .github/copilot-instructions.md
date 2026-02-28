@@ -102,12 +102,44 @@ if (response.type === 'opaqueredirect' || response.status === 302) {
 
 This redirect handling is **project-specific** - CDP Uploader returns 302 when upload accepted for scanning.
 
+## Document Upload Stub (Local Development)
+
+The `document-upload-stub/` directory contains a **local development stub** that replaces both Object Processor and CDP Uploader. This stub is **used by default** in `docker compose up`, eliminating external dependencies for local development.
+
+### Stub Architecture
+
+- **Hapi.js server** on port 3021 (`http://localhost:3021`)
+- **In-memory storage** for upload sessions (no database)
+- **CORS enabled** to accept browser requests from portal (port 3020)
+- **No authentication** required (suitable for local dev only)
+
+### Stub Endpoints
+
+1. **POST `/api/v1/initiate`** - Creates upload session, returns `{correlationId, uploadId, uploadUrl, statusUrl}`
+2. **GET `/api/v1/status/{correlationId}`** - Returns upload status (simulates IN_PROGRESS → SUCCESSFUL after 2s)
+3. **POST `/upload-and-scan/{uploadId}`** - Accepts file uploads, returns 302 redirect
+
+### Key Files in Stub
+
+- `document-upload-stub/src/server.js` - Hapi server setup with CORS
+- `document-upload-stub/src/routes/object-processor.js` - Object Processor API stubs
+- `document-upload-stub/src/routes/uploader.js` - CDP Uploader stub
+- `document-upload-stub/src/config/config.js` - Simple convict config (port, uploaderHost)
+
+### How Sessions Work
+
+Sessions stored in `Map()` keyed by `correlationId`. The uploader route uses `getSessionByUploadId()` helper to find sessions and `updateSessionStatus()` to mark them SUCCESSFUL after timeout.
+
+### CSP Configuration
+
+Portal's CSP ([src/plugins/content-security-policy.js](../src/plugins/content-security-policy.js)) allows additional upload domains via the `ADDITIONAL_UPLOAD_DOMAINS` environment variable (comma-separated). In local development, this is set to `http://localhost:3021` in [compose.yml](../compose.yml) to permit browser fetch() calls to the stub.
+
 ## Development Workflow
 
 ### Local Development
 
 ```bash
-# Start with Docker (requires Object Processor running in same network)
+# Start with Docker (includes document-upload-stub by default)
 docker compose up
 
 # Or run directly (requires Node 24.12.0+)
@@ -115,7 +147,11 @@ npm install
 npm run dev  # Starts webpack watch + nodemon
 ```
 
-Portal runs on `http://localhost:3020`. Expects Object Processor at `http://fcp-sfd-object-processor:3004` by default.
+Portal runs on `http://localhost:3020`, stub runs on `http://localhost:3021`. 
+
+**Default behavior**: `OBJECT_PROCESSOR_HOST` defaults to `http://document-upload-stub:3021` in `compose.yml`, so the portal uses the local stub automatically.
+
+**To use real Object Processor**: Override with `OBJECT_PROCESSOR_HOST=http://fcp-sfd-object-processor:3004` in `.env`.
 
 ### Testing
 
@@ -148,12 +184,21 @@ For production: set `COGNITO_ENABLED=true` and configure `COGNITO_DOMAIN`, `COGN
 - **`src/client/`** - Frontend JavaScript/SCSS (bundled by Webpack)
 - **`src/views/`** - Nunjucks templates
 - **`test/unit/`** - Vitest unit tests mirroring `src/` structure
+- **`document-upload-stub/`** - Local development stub (replaces Object Processor + CDP Uploader)
 
 ## Integration Points
 
-1. **Object Processor** (required) - Backend API for SFD Document Upload Service at `OBJECT_PROCESSOR_HOST`
+**Default (Local Development)**:
+1. **Document Upload Stub** - Included in this repo at `document-upload-stub/`, used by default in `docker compose up`
+   - Combines Object Processor and CDP Uploader functionality
+   - Runs on `http://localhost:3021`
+   - No authentication required
+   - In-memory session storage
+
+**Optional (Production/Testing)**:
+1. **Object Processor** - Backend API for SFD Document Upload Service at `OBJECT_PROCESSOR_HOST`
 2. **CDP Uploader** - File upload service (URL provided by Object Processor, browser connects directly)
-3. **AWS Cognito** (optional) - OAuth2 token provider via CDP API Gateway
+3. **AWS Cognito** - OAuth2 token provider via CDP API Gateway (required when using real Object Processor)
 
 ## Common Tasks
 

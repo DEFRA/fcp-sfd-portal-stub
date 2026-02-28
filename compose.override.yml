@@ -6,6 +6,13 @@ services:
     networks:
       - fcp-sfd
 
+  document-upload-stub:
+    ports:
+      - '3021:3021'
+      - '9330:9229'
+    networks:
+      - fcp-sfd
+
 networks:
   fcp-sfd:
     driver: bridge

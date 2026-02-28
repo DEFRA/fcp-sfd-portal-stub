@@ -570,8 +570,8 @@ describe('Document Upload Routes', () => {
     test('should return success view when upload status is SUCCESSFUL', async () => {
       getUploadStatus.mockResolvedValue({
         status: 'SUCCESSFUL',
-        uploadStatus: 'completed',
-        numberOfFiles: 3
+        numberOfFiles: 3,
+        fileNames: ['doc1.pdf']
       })
 
       await successGet.handler(mockRequest, mockToolkit)
@@ -580,7 +580,7 @@ describe('Document Upload Routes', () => {
         pageTitle: 'Upload successful',
         submissionId: 'test-uuid-1234',
         reference: 'REF-2026-001',
-        uploadStatus: 'completed',
+        uploadStatus: 'SUCCESSFUL',
         numberOfFiles: 3,
         uploadedFiles: ['doc1.pdf']
       })
@@ -596,8 +596,7 @@ describe('Document Upload Routes', () => {
       })
 
       getUploadStatus.mockResolvedValue({
-        status: 'SUCCESSFUL',
-        uploadStatus: 'completed'
+        status: 'SUCCESSFUL'
       })
 
       await successGet.handler(mockRequest, mockToolkit)
@@ -606,7 +605,7 @@ describe('Document Upload Routes', () => {
         pageTitle: 'Upload successful',
         submissionId: 'test-uuid-1234',
         reference: 'REF-2026-001',
-        uploadStatus: 'completed',
+        uploadStatus: 'SUCCESSFUL',
         numberOfFiles: 2,
         uploadedFiles: ['doc1.pdf', 'doc2.pdf']
       })
