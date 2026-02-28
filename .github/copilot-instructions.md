@@ -1,157 +1,213 @@
-# Copilot Instructions for fcp-sfd-portal-stub
+# Copilot Instructions for FCP SFD Portal Stub
 
 ## Project Overview
-This is a **Hapi.js-based GOV.UK frontend service** for Defra's Core Delivery Platform (CDP). It follows UK government digital service patterns and Defra-specific conventions.
 
-## Architecture & Core Patterns
+This is a **reference implementation** demonstrating how client portals integrate with the **SFD Document Upload Service**. It's a stub/example, not a production portal. The codebase showcases:
 
-### ES Modules Only
-- All files use ES modules (`import`/`export`), never CommonJS
-- Entry point: [../src/index.js](../src/index.js) → [../src/server.js](../src/server.js) → plugin registration
-- Uses `import.meta.url` and `fileURLToPath()` for path resolution, never `__dirname`
+- OAuth2 authentication with AWS Cognito (via CDP API Gateway)
+- Initiating upload sessions with business metadata via Object Processor API
+- Browser-based file uploads directly to CDP Uploader (files bypass portal backend)
+- Polling for upload status through Object Processor
 
-### Hapi Plugin Architecture
-Server composition happens via plugin registration in [../src/server.js](../src/server.js):
+**Critical Architecture**: Files flow User Browser → CDP Uploader → S3, **not** through this portal's backend. The portal only handles metadata and orchestration.
+
+## Tech Stack Conventions
+
+- **ESM modules only** - all `import`/`export`, no CommonJS (`require`/`module.exports`)
+- **Hapi.js 21** - server framework with plugin architecture
+- **Nunjucks** - templating engine with GOV.UK Frontend components
+- **Webpack** - bundles client-side JS/SCSS from `src/client/`
+- **Vitest** - testing framework with `vi` mocking utilities
+- **Neostandard** - ESLint config (ECMAScript 2025)
+- **Convict** - schema-based configuration management
+- **Pino** - structured logging in ECS format (production) or pretty format (dev)
+
+## Code Patterns
+
+### Route Definitions
+
+Routes export objects with `method`, `path`, and `handler` properties:
+
 ```javascript
-await server.register([
-  Scooter, requestLogger, requestTracing, secureContext,
-  pulse, nunjucksConfig, contentSecurityPolicy, headers,
-  router, session
-])
-```
-
-**Plugin Pattern** (see [../src/plugins/](../src/plugins/)):
-- Export object with `{ plugin: { name: string, register: function } }`
-- Router delegates to route modules (not inline in plugin)
-- Session/CSP/Headers configure via options objects
-
-### Configuration Management
-[../src/config/config.js](../src/config/config.js) uses **Convict** for schema-based config:
-- Access via `config.get('key')` or `config.get('nested.key')`
-- Environment-specific defaults: `isProduction`, `isDevelopment`, `isTest`
-- Never use `process.env` directly outside config.js
-
-### Routing Conventions
-Routes live in [../src/routes/](../src/routes/) and export objects:
-```javascript
-export const routeName = {
+export const metadataGet = {
   method: 'GET',
-  path: '/path',
-  handler: (request, h) => h.view('template')
+  path: '/document-upload/metadata',
+  handler: (request, h) => {
+    // Route logic
+  }
 }
 ```
-- Register routes via [../src/plugins/router.js](../src/plugins/router.js)
-- Static files served via [../src/common/helpers/serve-static-files.js](../src/common/helpers/serve-static-files.js)
-- Health check at `/healthy` and `/healthz` ([../src/routes/health.js](../src/routes/health.js))
 
-### Error Handling
-[../src/common/helpers/errors.js](../src/common/helpers/errors.js) - `catchAll` onPreResponse extension:
-- Boom errors → view templates (404 → [errors/404.njk](../src/views/errors/404.njk), 500 → [errors/500.njk](../src/views/errors/500.njk))
-- API routes (tagged with `tags: ['api']`) return JSON, not views
-- 5xx errors logged automatically
+All routes are auto-registered via [src/plugins/router.js](../src/plugins/router.js) which finds route files in `src/routes/`.
 
-### View Layer (Nunjucks)
-[../src/config/nunjucks/nunjucks.js](../src/config/nunjucks/nunjucks.js):
-- GOV.UK Frontend templates loaded from `node_modules/govuk-frontend/dist/`
-- Custom views in [../src/views/](../src/views/), partials in [../src/views/partials/](../src/views/partials/)
-- Context/globals injected via [context.js](../src/config/nunjucks/context.js) and [globals.js](../src/config/nunjucks/globals.js)
-- Templates use `.njk` extension
-- Handler pattern: `h.view('template-name', context)`
+### Session State
 
-**GOV.UK Design System**: 
-- **Always use Design System components** from https://design-system.service.gov.uk/
-- **Favor Nunjucks macros over HTML** - import and use GOV.UK component macros (buttons, inputs, etc.)
-- Pattern: `{% from "govuk/components/button/macro.njk" import govukButton %}`
-- See [../src/views/macros/heading/](../src/views/macros/heading/) for custom macro examples
+Use `request.yar` (Hapi Yar plugin) for session management:
+
+```javascript
+request.yar.set('metadata', metadata)
+const crn = request.yar.get('crn')
+```
+
+Session cookies configured in [src/plugins/session.js](../src/plugins/session.js).
+
+### Configuration
+
+Use [src/config/config.js](../src/config/config.js) convict schema. Access via:
+
+```javascript
+import { config } from './config/config.js'
+const host = config.get('objectProcessor.host')
+```
+
+Override with environment variables (see `../.env.example`).
+
+### Logging
+
+Import `createLogger()` from [src/common/helpers/logging/logger.js](../src/common/helpers/logging/logger.js):
+
+```javascript
+const logger = createLogger()
+logger.info({ submissionId }, 'Initiating upload')
+logger.error({ error, statusUrl }, 'Status check failed')
+```
+
+Use structured logging with context objects.
+
+### Object Processor Integration
+
+Two main API calls in [src/common/helpers/object-processor.js](../src/common/helpers/object-processor.js):
+
+1. **`initiateUpload(metadata)`** - POST `/api/v1/initiate` with business metadata, returns `{correlationId, uploadId, uploadUrl, statusUrl}`
+2. **`getUploadStatus(statusUrl)`** - GET status URL to poll upload progress
+
+Both automatically include OAuth2 Bearer token when Cognito enabled (`COGNITO_ENABLED=true`).
+
+### Browser Upload Pattern
+
+**Critical**: Client-side JavaScript in [src/client/javascript/document-upload.js](../src/client/javascript/document-upload.js) intercepts form submission and POSTs files directly to CDP Uploader:
+
+```javascript
+const response = await fetch(uploadUrl, {
+  method: 'POST',
+  body: formData,
+  redirect: 'manual'
+})
+
+// CDP Uploader responds with 302 redirect on acceptance
+if (response.type === 'opaqueredirect' || response.status === 302) {
+  window.location.href = '/document-upload/processing'
+}
+```
+
+This redirect handling is **project-specific** - CDP Uploader returns 302 when upload accepted for scanning.
+
+## Document Upload Stub (Local Development)
+
+The `document-upload-stub/` directory contains a **local development stub** that replaces both Object Processor and CDP Uploader. This stub is **used by default** in `docker compose up`, eliminating external dependencies for local development.
+
+### Stub Architecture
+
+- **Hapi.js server** on port 3021 (`http://localhost:3021`)
+- **In-memory storage** for upload sessions (no database)
+- **CORS enabled** to accept browser requests from portal (port 3020)
+- **No authentication** required (suitable for local dev only)
+
+### Stub Endpoints
+
+1. **POST `/api/v1/initiate`** - Creates upload session, returns `{correlationId, uploadId, uploadUrl, statusUrl}`
+2. **GET `/api/v1/status/{correlationId}`** - Returns upload status (simulates IN_PROGRESS → SUCCESSFUL after 2s)
+3. **POST `/upload-and-scan/{uploadId}`** - Accepts file uploads, returns 302 redirect
+
+### Key Files in Stub
+
+- `document-upload-stub/src/server.js` - Hapi server setup with CORS
+- `document-upload-stub/src/routes/object-processor.js` - Object Processor API stubs
+- `document-upload-stub/src/routes/uploader.js` - CDP Uploader stub
+- `document-upload-stub/src/config/config.js` - Simple convict config (port, uploaderHost)
+
+### How Sessions Work
+
+Sessions stored in `Map()` keyed by `correlationId`. The uploader route uses `getSessionByUploadId()` helper to find sessions and `updateSessionStatus()` to mark them SUCCESSFUL after timeout.
+
+### CSP Configuration
+
+Portal's CSP ([src/plugins/content-security-policy.js](../src/plugins/content-security-policy.js)) allows additional upload domains via the `ADDITIONAL_UPLOAD_DOMAINS` environment variable (comma-separated). In local development, this is set to `http://localhost:3021` in [compose.yml](../compose.yml) to permit browser fetch() calls to the stub.
 
 ## Development Workflow
 
-### Docker-First Development
+### Local Development
+
 ```bash
-docker compose up          # Start dev server with hot reload
-npm run docker:test        # Run tests in container
-npm run docker:test:watch  # TDD mode with auto-rerun
+# Start with Docker (includes document-upload-stub by default)
+docker compose up
+
+# Or run directly (requires Node 24.12.0+)
+npm install
+npm run dev  # Starts webpack watch + nodemon
 ```
-Volume mounts: `src/` and `package.json` for live reload
 
+Portal runs on `http://localhost:3020`, stub runs on `http://localhost:3021`. 
 
-### Frontend Build (Webpack)
-[../webpack.config.js](../webpack.config.js):
-- Entry: [../src/client/javascript/application.js](../src/client/javascript/application.js) + [../src/client/stylesheets/application.scss](../src/client/stylesheets/application.scss)
-- Output: `.public/` directory (gitignored)
-- Production: hashed filenames (`[contenthash:7]`), minified
-- Development: inline source maps, faster builds
-- **Run `npm run build:frontend`** before starting server if `.public/` is missing
+**Default behavior**: `OBJECT_PROCESSOR_HOST` defaults to `http://document-upload-stub:3021` in `compose.yml`, so the portal uses the local stub automatically.
 
-### Testing with Vitest
-[../vitest.config.js](../vitest.config.js), tests in [../test/unit/](../test/unit/):
-- Pattern: `test/**/*.test.js`
-- Coverage: `src/**` (excludes `.public`, `test/`, `coverage/`)
-- Run with `TZ=UTC` for consistency
-- Mock patterns: See [../test/unit/common/helpers/](../test/unit/common/helpers/) for examples
-- **Minimal structure tests** acceptable (plugin name, register function exist)
+**To use real Object Processor**: Override with `OBJECT_PROCESSOR_HOST=http://fcp-sfd-object-processor:3004` in `.env`.
 
-## Security & Infrastructure
+### Testing
 
-### Secure Context (TLS Certificates)
-[../src/common/helpers/secure-context/secure-context.js](../src/common/helpers/secure-context/secure-context.js):
-- Injects TRUSTSTORE_* env vars into TLS context
-- Only enabled when `isSecureContextEnabled` config is true
-- Required for CDP environments with custom CA certificates
+```bash
+# Run unit tests with coverage (in Docker)
+npm run docker:test
 
-### Proxy Configuration
-[../src/common/helpers/proxy/setup-proxy.js](../src/common/helpers/proxy/setup-proxy.js):
-- Configures global proxy for Undici and axios/request
-- Auto-enabled if `HTTP_PROXY` env var set
-- Called once in [../src/server.js](../src/server.js) before server creation
+# Watch mode for TDD
+npm run docker:test:watch
 
-### Content Security Policy
-[../src/plugins/content-security-policy.js](../src/plugins/content-security-policy.js):
-- Uses Blankie plugin
-- Includes GOV.UK Frontend script hash: `sha256-GUQ5ad8JK5KmEWmROf3LZd9ge94daqNvd8xy9YS1iDw=`
-- `formAction` allows external forms (`'self', '*'`)
+# Lint
+npm run lint
+npm run lint:fix
+```
 
-### Session Management
-[../src/plugins/session.js](../src/plugins/session.js) via @hapi/yar:
-- Cookie name/password from config
-- `isSecure` from config (false in dev, true in prod)
-- `isSameSite: 'Lax'` always
+Tests use Vitest with `vi.mock()` for dependency injection. See [test/unit/routes/document-upload.test.js](../test/unit/routes/document-upload.test.js) for patterns.
 
-## Logging
+### Cognito Authentication
 
-[../src/common/helpers/logging/logger.js](../src/common/helpers/logging/logger.js):
-- Uses Pino with ECS format (@elastic/ecs-pino-format)
-- Get logger: `createLogger()`
-- Request logging: `hapi-pino` configured in [request-logger.js](../src/common/helpers/logging/request-logger.js)
-- Server instance has `server.logger` available
+Toggle with `COGNITO_ENABLED=false` (default for local dev). When disabled, no tokens sent and Object Processor must have `AUTH_ENABLED=false`.
 
-## Common Gotchas
+For production: set `COGNITO_ENABLED=true` and configure `COGNITO_DOMAIN`, `COGNITO_CLIENT_ID`, `COGNITO_CLIENT_SECRET`.
 
-1. **Node.js version**: Requires >= 24.12.0 (see [../package.json](../package.json) engines)
-2. **ESLint**: Uses Neostandard with ECMAScript 2025, ignores `.public/`
-3. **Static files**: Must be in `.public/` after webpack build, served at `/public/*`
-4. **Joi validation**: Server uses Joi validator, configured with `abortEarly: false` for all errors
-5. **Request tracing**: `@defra/hapi-tracing` plugin auto-generates correlation IDs
-6. **Pulse monitoring**: [../src/common/helpers/pulse.js](../src/common/helpers/pulse.js) via hapi-pulse for metrics
+## Key Directories
 
-## When Adding Features
+- **`src/routes/`** - Route handlers (auto-registered by router plugin)
+- **`src/plugins/`** - Hapi plugins (CSP, headers, router, session)
+- **`src/common/helpers/`** - Shared utilities (Cognito, Object Processor client, logging)
+- **`src/config/`** - Convict config schema and Nunjucks setup
+- **`src/client/`** - Frontend JavaScript/SCSS (bundled by Webpack)
+- **`src/views/`** - Nunjucks templates
+- **`test/unit/`** - Vitest unit tests mirroring `src/` structure
+- **`document-upload-stub/`** - Local development stub (replaces Object Processor + CDP Uploader)
 
-**New Route**: 
-1. Create in `src/routes/`, export route object
-2. Register in [../src/plugins/router.js](../src/plugins/router.js) via `server.route()`
-3. Create view in `src/views/` if needed
-4. Add test in `test/unit/routes/`
+## Integration Points
 
-**New Plugin**:
-1. Create in `src/plugins/`, export with `{ plugin: { name, register } }` structure
-2. Register in [../src/server.js](../src/server.js) array
-3. Test plugin structure (name, register function)
+**Default (Local Development)**:
+1. **Document Upload Stub** - Included in this repo at `document-upload-stub/`, used by default in `docker compose up`
+   - Combines Object Processor and CDP Uploader functionality
+   - Runs on `http://localhost:3021`
+   - No authentication required
+   - In-memory session storage
 
-**New Config**:
-1. Add to [../src/config/config.js](../src/config/config.js) convict schema with doc, format, default, env
-2. Access via `config.get('key')`
+**Optional (Production/Testing)**:
+1. **Object Processor** - Backend API for SFD Document Upload Service at `OBJECT_PROCESSOR_HOST`
+2. **CDP Uploader** - File upload service (URL provided by Object Processor, browser connects directly)
+3. **AWS Cognito** - OAuth2 token provider via CDP API Gateway (required when using real Object Processor)
 
-**Frontend Assets**:
-1. JS in [../src/client/javascript/](../src/client/javascript/), SCSS in [../src/client/stylesheets/](../src/client/stylesheets/)
-2. Import in [application.js](../src/client/javascript/application.js) or [application.scss](../src/client/stylesheets/application.scss)
-3. Run `npm run build:frontend` or webpack watch
+## Common Tasks
+
+**Add a new route**: Create handler in `src/routes/`, export objects with `{method, path, handler}`. Router plugin auto-registers.
+
+**Add config value**: Update `src/config/config.js` convict schema, add to `../.env.example`.
+
+**Mock external APIs in tests**: Use `vi.mock()` at top of test file (see existing tests for patterns).
+
+**Update GOV.UK styles**: Modify SCSS in `src/client/stylesheets/`, Webpack rebuilds on save in dev mode.
+
+**Add Hapi plugin**: Register in `src/server.js` `server.register([...])` array.

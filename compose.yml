@@ -9,7 +9,22 @@ services:
       COGNITO_DOMAIN: ${COGNITO_DOMAIN}
       COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID}
       COGNITO_CLIENT_SECRET: ${COGNITO_CLIENT_SECRET}
-      OBJECT_PROCESSOR_HOST: ${OBJECT_PROCESSOR_HOST:-http://fcp-sfd-object-processor:3004}
+      OBJECT_PROCESSOR_HOST: ${OBJECT_PROCESSOR_HOST:-http://document-upload-stub:3021}
+      ADDITIONAL_UPLOAD_DOMAINS: ${ADDITIONAL_UPLOAD_DOMAINS:-http://localhost:3021}
     volumes:
       - ./src:/home/node/src
       - ./package.json:/home/node/package.json
+    depends_on:
+      - document-upload-stub
+    ports:
+      - "3020:3020"
+
+  document-upload-stub:
+    build:
+      context: ./document-upload-stub
+      target: development
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./document-upload-stub/src:/home/node/src
+      - ./document-upload-stub/package.json:/home/node/package.json

@@ -87,33 +87,68 @@ sequenceDiagram
 
 ## Dependencies
 
-### Object Processor (Required)
+### Local Development (Default)
 
-This stub **requires** the Object Processor to be running. By default, it expects the Object Processor to be available within the same Docker network at:
+For local development, this repository includes a **Document Upload Stub** ([document-upload-stub/](document-upload-stub/)) that replaces both the Object Processor and CDP Uploader services. This stub is **used by default** when running `docker compose up`, allowing you to run the portal end-to-end without any external dependencies.
 
+The stub provides all necessary endpoints:
+- `POST /api/v1/initiate` - Initiates upload sessions
+- `GET /api/v1/status/{correlationId}` - Returns upload status
+- `POST /upload-and-scan/{uploadId}` - Accepts file uploads
+
+**What the stub does:**
+- Accepts all uploads and marks them as SUCCESSFUL after 2 seconds
+- Uses in-memory storage (no database required)
+- Runs on port 3021 (accessible at `http://localhost:3021`)
+- No authentication required
+- Perfect for local testing and development
+
+**Content Security Policy Configuration:**
+
+The portal uses Content Security Policy (CSP) to restrict which domains the browser can connect to for file uploads. For the local stub to work, you need to allow `http://localhost:3021` in the CSP configuration.
+
+This is configured via the `ADDITIONAL_UPLOAD_DOMAINS` environment variable, which accepts a comma-separated list of domains:
+
+```bash
+# Allow browser to upload files to local stub
+ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3021
+
+# Multiple domains (if needed)
+ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3021,http://another-domain:8080
 ```
-http://fcp-sfd-object-processor:3004
-```
 
-This works automatically when both services run in the same Docker network (e.g., via `docker compose` in the parent `fcp-sfd-core` repository).
+This is **already configured by default** in [compose.yml](compose.yml), so the stub works out of the box when running `docker compose up`.
 
-**To override the Object Processor location**, set the environment variable:
+See [document-upload-stub/README.md](document-upload-stub/README.md) for more details.
+
+### Using Real Services (Optional)
+
+To connect to a **real Object Processor instance** instead of the stub, override the environment variable:
 
 ```bash
 OBJECT_PROCESSOR_HOST=http://your-object-processor-host:3004
 ```
 
-### CDP Uploader (Required)
+When using a real Object Processor:
+- The Object Processor will provide upload URLs pointing to the real CDP Uploader
+- You'll need AWS Cognito configured (`COGNITO_ENABLED=true`) if the Object Processor has authentication enabled
+- Files will be uploaded to real S3 storage
+- Virus scanning will be performed by the real CDP Uploader service
 
-The CDP Uploader handles file uploads from the user's browser. The upload URL is provided by the Object Processor in the `/api/v1/initiate` response.
+This works automatically when both services run in the same Docker network (e.g., via `docker compose` in the parent `fcp-sfd-core` repository).
 
-The URL uses the full CDP domain:
+**Example configuration for real services:**
 
+```bash
+# Enable Cognito authentication
+COGNITO_ENABLED=true
+COGNITO_DOMAIN=your-app.auth.eu-west-2.amazoncognito.com
+COGNITO_CLIENT_ID=your-client-id
+COGNITO_CLIENT_SECRET=your-client-secret
+
+# Point to real Object Processor
+OBJECT_PROCESSOR_HOST=https://fcp-sfd-object-processor:3004
 ```
-https://cdp-uploader.{env}.cdp-int.defra.cloud/upload-and-scan/{uploadId}
-```
-
-The browser submits files directly to this URL, bypassing the portal backend entirely.
 
 ## Authentication with Cognito
 
@@ -179,6 +214,9 @@ COGNITO_CLIENT_SECRET=your-app-client-secret-here
 # Object Processor location (default: docker network service name)
 # Override this if running Object Processor elsewhere
 OBJECT_PROCESSOR_HOST=http://fcp-sfd-object-processor:3004
+
+# Additional upload domains for CSP (for local development stub)
+ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3021
 ```
 
 ## Browser-Based Upload Nuances

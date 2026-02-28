@@ -213,6 +213,13 @@ export const config = convict({
       default: null,
       env: 'OBJECT_PROCESSOR_HOST'
     }
+  },
+  additionalUploadDomains: {
+    doc: 'Additional domains to allow for file uploads (comma-separated, for local development stub)',
+    format: String,
+    nullable: true,
+    default: null,
+    env: 'ADDITIONAL_UPLOAD_DOMAINS'
   }
 })
 

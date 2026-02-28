@@ -36,7 +36,9 @@ describe('contentSecurityPolicy', () => {
   })
 
   test('should allow connections to self and CDP domains', () => {
-    expect(contentSecurityPolicy.options.connectSrc).toEqual(['self', 'https://*.cdp-int.defra.cloud'])
+    // In test environment, connectSrc includes additional domains from ADDITIONAL_UPLOAD_DOMAINS env var
+    expect(contentSecurityPolicy.options.connectSrc).toContain('self')
+    expect(contentSecurityPolicy.options.connectSrc).toContain('https://*.cdp-int.defra.cloud')
   })
 
   test('should generate nonces', () => {
