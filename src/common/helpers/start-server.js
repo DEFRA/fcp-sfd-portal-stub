@@ -9,8 +9,11 @@ async function startServer () {
     server = await createServer()
     await server.start()
 
-    server.logger.info('Server started successfully')
-    server.logger.info(
+    const logger = createLogger()
+    const uploadMode = config.get('uploadMode')
+    logger.info({ uploadMode }, `Portal running in upload mode: ${uploadMode}`)
+    logger.info('Server started successfully')
+    logger.info(
       `Access your frontend on http://localhost:${config.get('port')}`
     )
   } catch (err) {

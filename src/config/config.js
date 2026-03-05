@@ -86,7 +86,7 @@ export const config = convict({
     level: {
       doc: 'Logging level',
       format: ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'],
-      default: 'warn',
+      default: 'info',
       env: 'LOG_LEVEL'
     },
     format: {
@@ -220,6 +220,24 @@ export const config = convict({
     nullable: true,
     default: null,
     env: 'ADDITIONAL_UPLOAD_DOMAINS'
+  },
+  uploadMode: {
+    doc: 'Upload mode: "direct" (browser posts direct to CDP Uploader) or "gateway-routing" (browser posts to client gateway)',
+    format: ['direct', 'gateway-routing'],
+    default: 'gateway-routing',
+    env: 'UPLOAD_MODE'
+  },
+  redirectAfterUpload: {
+    doc: 'Path to redirect to after upload completion (used in gateway-routing mode)',
+    format: String,
+    default: '/document-upload/processing',
+    env: 'REDIRECT_AFTER_UPLOAD'
+  },
+  gatewayUrl: {
+    doc: 'Gateway URL for gateway-routing mode (e.g., http://localhost:3019)',
+    format: String,
+    default: 'http://localhost:3019',
+    env: 'GATEWAY_URL'
   }
 })
 

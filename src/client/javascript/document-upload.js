@@ -5,12 +5,22 @@ export function initDocumentUpload () {
     return
   }
 
+  // Only intercept form submission in 'direct' mode
+  // In 'gateway-routing' mode, standard form POST works
+  const uploadMode = uploadForm.getAttribute('data-upload-mode')
+
+  if (uploadMode !== 'direct') {
+    // Let the browser handle form submission normally
+    return
+  }
+
   uploadForm.addEventListener('submit', async (e) => {
     // Prevent the default form submission to handle it via JavaScript
     // This is because the /upload-and-scan endpoint performs a relative redirect
-    // This means that a normal form submission would be incorrectly redirected to a path within the CDP uploader service instead of client.
+    // This means that a normal form submission would be incorrectly redirected to a path assumed to be within the CDP Uploader domain
+    // instead of the clients.
     // CDP have plans to change this to an absolute redirect in the future
-    // For now, there is no way to avoid the need for client side JavaScript.
+    // For now, there is no way to avoid the need for client side JavaScript if Gateway level routing cannot be used on the client's domain.
 
     e.preventDefault()
 

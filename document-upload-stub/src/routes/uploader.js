@@ -30,8 +30,11 @@ export const uploadPost = {
       updateSessionStatus(session.correlationId, 'SUCCESSFUL', 'Files uploaded and scanned successfully', 0)
     }, 2000)
 
-    // CDP Uploader returns relative 302 redirect on successful upload acceptance
-    // The portal client-side code intercepts this and redirects to /document-upload/processing
-    return h.redirect('http://localhost:3021/relative-redirect').code(302)
+    // Make redirect relative (strip protocol/host) to simulate real CDP Uploader behavior
+    const relativeRedirect = session.redirect.replace(/^https?:\/\/[^/]+/, '')
+
+    request.logger.info({ correlationId: session.correlationId, redirect: relativeRedirect }, 'Redirecting after upload')
+
+    return h.redirect(relativeRedirect).code(302)
   }
 }

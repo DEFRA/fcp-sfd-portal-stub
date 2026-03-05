@@ -1,5 +1,6 @@
 import { format } from 'date-fns'
 import { randomUUID } from 'node:crypto'
+import { config } from '../config/config.js'
 import { initiateUpload, getUploadStatus } from '../common/helpers/object-processor.js'
 
 export const signInGet = {
@@ -67,11 +68,22 @@ export const metadataPost = {
     }
 
     try {
-      const result = await initiateUpload(metadata)
+      const uploadMode = config.get('uploadMode')
+      const redirect = config.get('redirectAfterUpload')
+
+      const result = await initiateUpload(metadata, redirect)
+
+      let uploadUrl = result.uploadUrl
+
+      // In gateway-routing mode, construct uploadUrl using gateway domain
+      if (uploadMode === 'gateway-routing') {
+        const gatewayUrl = config.get('gatewayUrl')
+        uploadUrl = `${gatewayUrl}/upload-and-scan/${result.uploadId}`
+      }
 
       request.yar.set('metadata', metadata)
       request.yar.set('submissionId', submissionId)
-      request.yar.set('uploadUrl', result.uploadUrl)
+      request.yar.set('uploadUrl', uploadUrl)
       request.yar.set('statusUrl', result.statusUrl)
       request.yar.set('uploadId', result.uploadId)
       request.yar.set('correlationId', result.correlationId)
@@ -95,6 +107,7 @@ export const uploadGet = {
   handler: (request, h) => {
     const metadata = request.yar.get('metadata')
     const uploadUrl = request.yar.get('uploadUrl')
+    const uploadMode = config.get('uploadMode')
 
     if (!metadata || !uploadUrl) {
       return h.redirect('/document-upload/sign-in')
@@ -103,7 +116,8 @@ export const uploadGet = {
     return h.view('document-upload/upload', {
       pageTitle: 'Upload files',
       metadata,
-      uploadUrl
+      uploadUrl,
+      uploadMode
     })
   }
 }

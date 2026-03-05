@@ -39,12 +39,17 @@ async function makeRequest (path, options = {}) {
   return data
 }
 
-export async function initiateUpload (metadata) {
+export async function initiateUpload (metadata, redirect) {
   logger.info({ submissionId: metadata.submissionId }, 'Initiating upload with object processor')
+
+  const payload = {
+    metadata,
+    redirect
+  }
 
   return makeRequest('/api/v1/initiate', {
     method: 'POST',
-    body: JSON.stringify({ metadata })
+    body: JSON.stringify(payload)
   })
 }
 
