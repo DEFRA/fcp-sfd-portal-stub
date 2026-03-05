@@ -277,21 +277,19 @@ In local development, the URLs use `localhost` domains (e.g., `http://cdp-upload
 
 ### Why 302 Redirect Handling?
 
-CDP Uploader returns a `302 redirect` response when it accepts an upload for processing. Due to CORS and browser security:
+CDP Uploader returns a **relative** `302 redirect` response when it accepts an upload for processing.
 
-- The redirect is **opaque** to JavaScript (no headers or body accessible)
-- We detect it by checking `response.type === 'opaqueredirect'` or `response.status === 302`
-- On detection, we programmatically navigate to `/document-upload/processing`
+This means that we cannot rely on the browser's default redirect handling, as it would attempt to follow the redirect to a path within the CDP Uploader service instead of navigating back to the client's processing page.
+
+We must instead intercept the form submit and detect the redirect response in JavaScript to programmatically navigate to the correct next page.
 
 See [src/client/javascript/document-upload.js](src/client/javascript/document-upload.js):
 
-```javascript
-// CDP Uploader may respond with 302 redirect when upload is accepted
-if (response.type === 'opaqueredirect' || response.status === 302 || response.status === 0) {
-  // Upload accepted; scanning in progress
-  window.location.href = '/document-upload/processing'
-}
-```
+#### Progressive enhancement challenge
+
+This approach relies on JavaScript to handle the upload and redirect flow, which means that users without JavaScript enabled will not be able to complete the upload process. However, given the technical requirements of direct browser-to-CDP communication and 302 redirect handling, this is currently the only viable solution.
+
+It is CDP's intention to support absolute redirects in the future.
 
 ### Security Benefits
 
