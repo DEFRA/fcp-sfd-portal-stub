@@ -13,6 +13,13 @@ services:
     networks:
       - fcp-sfd
 
+  document-upload-frontend-stub:
+    ports:
+      - '3022:3022'
+      - '9331:9229'
+    networks:
+      - fcp-sfd
+
   nginx:
     ports:
       - '3019:80'

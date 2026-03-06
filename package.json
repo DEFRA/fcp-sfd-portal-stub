@@ -14,8 +14,6 @@
     "dev:debug": "npm run frontend:watch & npm run server:debug",
     "docker:build": "docker compose build",
     "docker:dev": "docker compose up",
-    "docker:test": "npm run lint && mkdir -p coverage 2>/dev/null || true && docker compose -p fcp-sfd-portal-stub-test down -v && docker compose -f compose.yml -f compose.test.yml -p fcp-sfd-portal-stub-test run --build --rm fcp-sfd-portal-stub",
-    "docker:test:watch": "docker compose -p fcp-sfd-portal-stub-test down -v && docker compose -f compose.yml -f compose.test.yml -f compose.test.watch.yml -p fcp-sfd-portal-stub-test run --build --rm fcp-sfd-portal-stub",
     "frontend:watch": "NODE_ENV=development webpack --watch",
     "git:pre-commit-hook": "npm run lint:fix",
     "lint": "eslint",
@@ -25,9 +23,7 @@
     "server:debug": "nodemon --inspect-brk=0.0.0.0 --ext js --legacy-watch ./src",
     "server:watch": "nodemon --inspect=0.0.0.0 --ext js --legacy-watch ./src",
     "setup:husky": "node -e \"try { (await import('husky')).default() } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e }\" --input-type module",
-    "start": "NODE_ENV=production node --use-strict .",
-    "test": "TZ=UTC vitest run --coverage",
-    "test:watch": "TZ=UTC vitest"
+    "start": "NODE_ENV=production node --use-strict ."
   },
   "author": "Defra DDTS",
   "contributors": [

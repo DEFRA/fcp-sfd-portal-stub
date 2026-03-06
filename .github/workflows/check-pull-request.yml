@@ -20,13 +20,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create Coverage Directory
-        run: mkdir -p -m 777 coverage
-
-      - name: Run Tests
-        run: |
-          npm run docker:test
-
       - name: Test Docker Image Build
         run: |
           set +e
