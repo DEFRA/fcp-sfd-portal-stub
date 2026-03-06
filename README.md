@@ -174,11 +174,11 @@ The key difference is **where the browser sends file uploads and how redirects a
 | Feature | gateway-routing | frontend-redirect | direct |
 |---------|----------------|-------------------|--------|
 | **Browser upload target** | Gateway domain | CDP Uploader | CDP Uploader |
-| **Redirect handling** | Gateway routes relatively | Document upload frontend transforms to absolute | JavaScript intercepts |
+| **Redirect handling** | Gateway routes relatively | Gateway proxies to frontend stub, then redirects | JavaScript intercepts |
 | **Works without JavaScript** | ✅ Yes | ✅ Yes | ❌ No |
 | **GOV.UK Service Manual compliant** | ✅ Yes | ✅ Yes | ❌ No |
-| **Infrastructure required** | Gateway (nginx, CloudFront) | Document upload frontend service | None |
-| **CSP complexity** | Simple (self only) | Moderate (add document-upload-frontend) | Complex (CDP domains) |  
+| **Infrastructure required** | Gateway (nginx, CloudFront) | Gateway + document upload frontend service | None |
+| **CSP complexity** | Simple (self only) | Simple (self + CDP domains) | Complex (self + CDP domains) |  
 | **Accessibility** | ✅ Full | ✅ Full | ⚠️ Reduced |
 | **Multi-client support** | Per-client gateway config | ✅ Built-in | N/A |
 
@@ -299,7 +299,8 @@ sequenceDiagram
     participant Portal as Portal Application
     participant Processor as Object Processor
     participant Uploader as CDP Uploader
-    participant Mapper as Redirect Mapper<br/>(port 3022)
+    participant Gateway as Gateway<br/>(nginx/CloudFront)
+    participant Frontend as Document Upload<br/>Frontend Stub
 
     Browser->>Portal: POST /document-upload/metadata
     Portal->>Processor: POST /api/v1/initiate<br/>(metadata, redirect: "/fcp-sfd-doc-upload/portal-stub/document-upload/processing")
@@ -309,12 +310,15 @@ sequenceDiagram
     
     Browser->>Uploader: POST /upload-and-scan/{id}<br/>(standard form submit, files)
     Uploader->>Uploader: Virus scan + S3 upload
-    Note over Uploader: Detects redirect starts with<br/>/fcp-sfd-doc-upload/
-    Uploader-->>Browser: 302 Location: http://document-upload-frontend-stub:3022/fcp-sfd-doc-upload/portal-stub/document-upload/processing
+    Uploader-->>Browser: 302 Location: /fcp-sfd-doc-upload/portal-stub/document-upload/processing
+    Note over Uploader: Returns relative redirect<br/>(standard CDP behavior)
     
-    Browser->>Mapper: GET /fcp-sfd-doc-upload/portal-stub/document-upload/processing
-    Note over Mapper: Extract identifier: "portal-stub"<br/>Lookup: "http://localhost:3020"<br/>Extract path: "/document-upload/processing"
-    Mapper-->>Browser: 302 Location: http://localhost:3020/document-upload/processing
+    Browser->>Gateway: GET /fcp-sfd-doc-upload/portal-stub/document-upload/processing
+    Note over Gateway: NGINX rule matches<br/>/fcp-sfd-doc-upload/ path
+    Gateway->>Frontend: Proxy to frontend stub
+    Note over Frontend: Extract identifier: "portal-stub"<br/>Lookup: "http://localhost:3020"<br/>Extract path: "/document-upload/processing"
+    Frontend-->>Gateway: 302 Location: http://localhost:3020/document-upload/processing
+    Gateway-->>Browser: 302 Location: http://localhost:3020/document-upload/processing
     
     Browser->>Portal: GET /document-upload/processing
     Portal-->>Browser: Display processing page
@@ -328,21 +332,22 @@ sequenceDiagram
 4. **Browser receives upload form** with action pointing to CDP Uploader
 5. **User submits files** via standard HTML form POST (no JavaScript)
 6. **CDP Uploader scans files** and stores in S3
-7. **CDP Uploader detects** redirect starts with `/fcp-sfd-doc-upload/` 
-8. **CDP Uploader redirects (absolute)** to document-upload-frontend: `http://document-upload-frontend-stub:3022/fcp-sfd-doc-upload/{identifier}/{path}`
-9. **Document upload frontend extracts identifier** and looks up client's absolute domain
-10. **Document upload frontend redirects (absolute)** to client domain: `http://localhost:3020/document-upload/processing`
-11. **Browser arrives** at portal's processing page
-12. **Portal polls status** and displays result
+7. **CDP Uploader returns relative redirect**: `/fcp-sfd-doc-upload/portal-stub/document-upload/processing`
+8. **Browser follows redirect to gateway** (relative URL resolves to gateway domain)
+9. **Gateway NGINX rule matches** `/fcp-sfd-doc-upload/` and proxies to document-upload-frontend stub
+10. **Frontend stub extracts identifier** and looks up client's absolute domain
+11. **Frontend stub redirects (absolute)** to client domain: `http://localhost:3020/document-upload/processing`
+12. **Browser arrives** at portal's processing page
+13. **Portal polls status** and displays result
 
-**Key insight:** The document-upload-frontend acts as a lookup service that transforms relative redirects into client-specific absolute URLs, enabling multi-client scenarios without requiring each client to configure gateway routing.
+**Key insight:** NGINX gateway routing eliminates need for application-level redirect detection. The uploader just returns standard relative redirects, and NGINX proxies requests to the frontend stub based on path pattern.
 
 #### Configuration
 
 ```bash
 UPLOAD_MODE=frontend-redirect
 REDIRECT_AFTER_UPLOAD=/document-upload/processing
-ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3021,http://localhost:3022  # CSP allows uploader and mapper
+ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3021  # CSP allows uploader (stub)
 ```
 
 **Visit:** `http://localhost:3020`
@@ -358,17 +363,18 @@ ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3021,http://localhost:3022  # CSP all
 
 #### Requirements
 
-- Redirect mapper service running (included in this repo at [document-upload-frontend-stub/](document-upload-frontend-stub/))
-- Client identifier configured in redirect mapper
-- CSP allows connections to CDP Uploader and document-upload-frontend
+- Gateway with NGINX routing rules (included in this repo at [nginx/nginx.conf](nginx/nginx.conf))
+- Document upload frontend stub running (included in this repo at [document-upload-frontend-stub/](document-upload-frontend-stub/))
+- Client identifier configured in frontend stub
+- CSP allows form submissions to CDP Uploader
 
 #### Files
 
+- [nginx/nginx.conf](nginx/nginx.conf) - Gateway routing rules (proxies `/fcp-sfd-doc-upload/` to frontend stub)
 - [document-upload-frontend-stub/](document-upload-frontend-stub/) - Redirect mapping service
 - [document-upload-frontend-stub/src/routes/redirect.js](document-upload-frontend-stub/src/routes/redirect.js) - Client identifier to domain mapping
-- [src/routes/document-upload.js](src/routes/document-upload.js) - Redirect prefix logic
-- [document-upload-stub/src/routes/uploader.js](document-upload-stub/src/routes/uploader.js) - Absolute redirect to mapper
-- [src/plugins/content-security-policy.js](src/plugins/content-security-policy.js) - CSP configuration
+- [src/routes/document-upload.js](src/routes/document-upload.js#L73-L78) - Redirect prefix logic
+- [src/plugins/content-security-policy.js](src/plugins/content-security-policy.js#L25-L34) - CSP configuration
 
 ---
 
@@ -494,7 +500,7 @@ The stub automatically configures CSP based on `UPLOAD_MODE`:
 | Directive | gateway-routing | frontend-redirect | direct |
 |-----------|----------------|-------------------|--------|
 | `connect-src` | `'self'` | `'self'` | `'self'`, CDP domains, `ADDITIONAL_UPLOAD_DOMAINS` |
-| `form-action` | `'self'` | `'self'`, CDP domains, document-upload-frontend, `ADDITIONAL_UPLOAD_DOMAINS` | `'self'`, CDP domains, `ADDITIONAL_UPLOAD_DOMAINS` |
+| `form-action` | `'self'` | `'self'`, CDP domains, `ADDITIONAL_UPLOAD_DOMAINS` | `'self'`, CDP domains, `ADDITIONAL_UPLOAD_DOMAINS` |
 
 See [src/plugins/content-security-policy.js](src/plugins/content-security-policy.js) for implementation.
 
