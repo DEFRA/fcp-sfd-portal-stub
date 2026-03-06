@@ -35,14 +35,9 @@ services:
       target: development
     environment:
       NODE_ENV: development
-      DOCUMENT_UPLOAD_FRONTEND_ENABLED: ${DOCUMENT_UPLOAD_FRONTEND_ENABLED:-false}
-      DOCUMENT_UPLOAD_FRONTEND_HOST: ${DOCUMENT_UPLOAD_FRONTEND_HOST:-http://document-upload-frontend-stub:3022}
-      CLIENT_IDENTIFIER: ${CLIENT_IDENTIFIER:-portal-stub}
     volumes:
       - ./document-upload-stub/src:/home/node/src
       - ./document-upload-stub/package.json:/home/node/package.json
-    depends_on:
-      - document-upload-frontend-stub
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3021/health"]
       interval: 10s

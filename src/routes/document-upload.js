@@ -71,7 +71,7 @@ export const metadataPost = {
       const uploadMode = config.get('uploadMode')
       let redirect = config.get('redirectAfterUpload')
 
-      // In frontend-redirect mode, prepend redirect mapper prefix
+      // In frontend-redirect mode, prepend client identifier prefix so NGINX routes to frontend stub
       if (uploadMode === 'frontend-redirect') {
         const clientIdentifier = 'portal-stub'
         redirect = `/fcp-sfd-doc-upload/${clientIdentifier}${redirect}`
