@@ -22,6 +22,19 @@ if (uploadMode === 'direct') {
     connectSrc.push(...domains)
     formAction.push(...domains)
   }
+} else if (uploadMode === 'frontend-redirect') {
+  // Frontend-redirect mode: Allow form POST to CDP Uploader and redirects through document-upload-frontend
+  formAction.push('https://*.cdp-int.defra.cloud')
+
+  // Allow additional upload domains (e.g., local development stub)
+  const additionalDomains = config.get('additionalUploadDomains')
+  if (additionalDomains) {
+    const domains = additionalDomains.split(',').map(d => d.trim()).filter(d => d.length > 0)
+    formAction.push(...domains)
+  }
+
+  // Allow document-upload-frontend for redirect handling
+  formAction.push('http://localhost:3022')
 }
 // In gateway-routing mode, only 'self' is needed since nginx handles routing
 

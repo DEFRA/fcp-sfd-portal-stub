@@ -1,4 +1,5 @@
 import { getSessionByUploadId, updateSessionStatus } from './object-processor.js'
+import { config } from '../config/config.js'
 
 export const uploadPost = {
   method: 'POST',
@@ -30,11 +31,19 @@ export const uploadPost = {
       updateSessionStatus(session.correlationId, 'SUCCESSFUL', 'Files uploaded and scanned successfully', 0)
     }, 2000)
 
-    // Make redirect relative (strip protocol/host) to simulate real CDP Uploader behavior
-    const relativeRedirect = session.redirect.replace(/^https?:\/\/[^/]+/, '')
+    let redirectUrl
 
-    request.logger.info({ correlationId: session.correlationId, redirect: relativeRedirect }, 'Redirecting after upload')
+    // If redirect starts with /fcp-sfd-doc-upload/, redirect to document-upload-frontend service
+    if (session.redirect.startsWith('/fcp-sfd-doc-upload/')) {
+      const documentUploadFrontendHost = config.get('documentUploadFrontend.host')
+      redirectUrl = `${documentUploadFrontendHost}${session.redirect}`
+      request.logger.info({ correlationId: session.correlationId, redirectUrl }, 'Redirecting to document-upload-frontend')
+    } else {
+      // Make redirect relative (strip protocol/host) to simulate real CDP Uploader behavior
+      redirectUrl = session.redirect.replace(/^https?:\/\/[^/]+/, '')
+      request.logger.info({ correlationId: session.correlationId, redirect: redirectUrl }, 'Redirecting after upload')
+    }
 
-    return h.redirect(relativeRedirect).code(302)
+    return h.redirect(redirectUrl).code(302)
   }
 }

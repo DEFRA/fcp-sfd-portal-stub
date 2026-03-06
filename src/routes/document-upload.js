@@ -69,7 +69,13 @@ export const metadataPost = {
 
     try {
       const uploadMode = config.get('uploadMode')
-      const redirect = config.get('redirectAfterUpload')
+      let redirect = config.get('redirectAfterUpload')
+
+      // In frontend-redirect mode, prepend redirect mapper prefix
+      if (uploadMode === 'frontend-redirect') {
+        const clientIdentifier = 'portal-stub'
+        redirect = `/fcp-sfd-doc-upload/${clientIdentifier}${redirect}`
+      }
 
       const result = await initiateUpload(metadata, redirect)
 

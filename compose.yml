@@ -19,6 +19,7 @@ services:
       - ./package.json:/home/node/package.json
     depends_on:
       - document-upload-stub
+      - document-upload-frontend-stub
     ports:
       - "3020:3020"
     healthcheck:
@@ -34,11 +35,34 @@ services:
       target: development
     environment:
       NODE_ENV: development
+      DOCUMENT_UPLOAD_FRONTEND_ENABLED: ${DOCUMENT_UPLOAD_FRONTEND_ENABLED:-false}
+      DOCUMENT_UPLOAD_FRONTEND_HOST: ${DOCUMENT_UPLOAD_FRONTEND_HOST:-http://document-upload-frontend-stub:3022}
+      CLIENT_IDENTIFIER: ${CLIENT_IDENTIFIER:-portal-stub}
     volumes:
       - ./document-upload-stub/src:/home/node/src
       - ./document-upload-stub/package.json:/home/node/package.json
+    depends_on:
+      - document-upload-frontend-stub
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3021/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  document-upload-frontend-stub:
+    build:
+      context: ./document-upload-frontend-stub
+      target: development
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./document-upload-frontend-stub/src:/home/node/src
+      - ./document-upload-frontend-stub/package.json:/home/node/package.json
+    ports:
+      - "3022:3022"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3022/health"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -52,4 +76,6 @@ services:
       fcp-sfd-portal-stub:
         condition: service_healthy
       document-upload-stub:
+        condition: service_healthy
+      document-upload-frontend-stub:
         condition: service_healthy
