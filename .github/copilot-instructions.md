@@ -6,10 +6,15 @@ This is a **reference implementation** demonstrating how client portals integrat
 
 - OAuth2 authentication with AWS Cognito (via CDP API Gateway)
 - Initiating upload sessions with business metadata via Object Processor API
-- Browser-based file uploads directly to CDP Uploader (files bypass portal backend)
+- **Three upload patterns**: gateway-routing (recommended), frontend-redirect (multi-client), and direct (fallback)
+- Browser-based file uploads (routing depends on mode - see Upload Modes section)
 - Polling for upload status through Object Processor
 
-**Critical Architecture**: Files flow User Browser → CDP Uploader → S3, **not** through this portal's backend. The portal only handles metadata and orchestration.
+**Critical Architecture**: This stub demonstrates **three different upload patterns**:
+- **gateway-routing/frontend-redirect**: Files flow User Browser → Gateway → CDP Uploader → S3
+- **direct mode**: Files flow User Browser → CDP Uploader → S3 (requires JavaScript)
+
+The portal handles metadata and orchestration. In all modes, files **never pass through the portal backend** - they go directly from browser to uploader (via gateway or direct).
 
 ## Tech Stack Conventions
 
@@ -83,24 +88,60 @@ Two main API calls in [src/common/helpers/object-processor.js](../src/common/hel
 
 Both automatically include OAuth2 Bearer token when Cognito enabled (`COGNITO_ENABLED=true`).
 
-### Browser Upload Pattern
+### Upload Modes
 
-**Critical**: Client-side JavaScript in [src/client/javascript/document-upload.js](../src/client/javascript/document-upload.js) intercepts form submission and POSTs files directly to CDP Uploader:
+The portal supports **three upload patterns** controlled by `UPLOAD_MODE` environment variable:
+
+#### 1. Gateway Routing Mode (Default, Recommended)
+- **User access**: `http://localhost:3019` (nginx gateway)
+- **Upload flow**: Browser → Gateway → CDP Uploader (standard HTML form, no JavaScript)
+- **Redirect handling**: Relative redirects stay within gateway domain
+- **CSP**: Simple - only `'self'` needed
+- **Progressive enhancement**: ✅ Works without JavaScript
+- **Best for**: CDP services, services with gateway infrastructure
+
+#### 2. Frontend Redirect Mode (Multi-Client)
+- **User access**: `http://localhost:3020` (portal directly)
+- **Upload flow**: Browser → Gateway → CDP Uploader (standard HTML form, no JavaScript)
+- **Redirect handling**: Gateway routes to document-upload-frontend-stub which maps client identifiers to absolute URLs
+- **CSP**: Requires gateway domain in `form-action` directive
+- **Progressive enhancement**: ✅ Works without JavaScript
+- **Best for**: Multi-client scenarios, external services needing centralized redirect mapping
+- **Key files**: `document-upload-frontend-stub/` service
+
+#### 3. Direct Mode (Fallback Only)
+- **User access**: `http://localhost:3020` (portal directly)
+- **Upload flow**: Browser → CDP Uploader (JavaScript fetch with redirect interception)
+- **Redirect handling**: JavaScript detects opaque redirect and manually navigates
+- **CSP**: Requires uploader domain in `form-action` and `connect-src`
+- **Progressive enhancement**: ❌ Requires JavaScript - fails without client-side code
+- **Best for**: Situations where gateway infrastructure is not available (use as last resort)
+- **Implementation**: [src/client/javascript/document-upload.js](../src/client/javascript/document-upload.js)
+
+**Key Code Pattern** (all modes):
+In [src/routes/document-upload.js](../src/routes/document-upload.js), the upload URL is set based on mode:
 
 ```javascript
-const response = await fetch(uploadUrl, {
-  method: 'POST',
-  body: formData,
-  redirect: 'manual'
-})
+const uploadMode = config.get('uploadMode')
+let uploadUrl = result.uploadUrl
 
-// CDP Uploader responds with 302 redirect on acceptance
-if (response.type === 'opaqueredirect' || response.status === 302) {
-  window.location.href = '/document-upload/processing'
+if (uploadMode === 'gateway-routing' || uploadMode === 'frontend-redirect') {
+  // Route uploads through gateway for both modes
+  const gatewayUrl = config.get('gatewayUrl')
+  uploadUrl = `${gatewayUrl}/upload-and-scan/${result.uploadId}`
 }
+// In direct mode, use uploadUrl from Object Processor as-is
 ```
 
-This redirect handling is **project-specific** - CDP Uploader returns 302 when upload accepted for scanning.
+**Redirect Prefix** (frontend-redirect only):
+In frontend-redirect mode, the redirect path is prefixed with `/fcp-sfd-doc-upload/{clientIdentifier}` so the gateway can route to the document-upload-frontend-stub:
+
+```javascript
+if (uploadMode === 'frontend-redirect') {
+  const clientIdentifier = 'portal-stub'
+  redirect = `/fcp-sfd-doc-upload/${clientIdentifier}${redirect}`
+}
+```
 
 ## Document Upload Stub (Local Development)
 
@@ -132,24 +173,45 @@ Sessions stored in `Map()` keyed by `correlationId`. The uploader route uses `ge
 
 ### CSP Configuration
 
-Portal's CSP ([src/plugins/content-security-policy.js](../src/plugins/content-security-policy.js)) allows additional upload domains via the `ADDITIONAL_UPLOAD_DOMAINS` environment variable (comma-separated). In local development, this is set to `http://localhost:3021` in [compose.yml](../compose.yml) to permit browser fetch() calls to the stub.
+Portal's CSP ([src/plugins/content-security-policy.js](../src/plugins/content-security-policy.js)) is **automatically configured based on `UPLOAD_MODE`**:
+
+- **gateway-routing**: Only `'self'` needed (same-origin uploads)
+- **frontend-redirect**: Needs gateway domain in `form-action` via `ADDITIONAL_UPLOAD_DOMAINS` (cross-origin form POST)
+- **direct**: Needs uploader domain in both `form-action` and `connect-src` via `ADDITIONAL_UPLOAD_DOMAINS`
+
+In [compose.yml](../compose.yml), `ADDITIONAL_UPLOAD_DOMAINS` defaults to `http://localhost:3019,http://localhost:3021` to support all modes in local development.
+
+The CSP plugin reads `config.get('uploadMode')` and dynamically adjusts `formAction` and `connectSrc` directives accordingly.
 
 ## Development Workflow
 
 ### Local Development
 
 ```bash
-# Start with Docker (includes document-upload-stub by default)
+# Gateway routing mode (DEFAULT - recommended)
 docker compose up
+# Visit http://localhost:3019 (nginx gateway)
 
-# Or run directly (requires Node 24.12.0+)
+# Frontend redirect mode (multi-client scenarios)
+UPLOAD_MODE=frontend-redirect docker compose up
+# Visit http://localhost:3020 (portal directly)
+
+# Direct mode (fallback, requires JavaScript)
+UPLOAD_MODE=direct docker compose up
+# Visit http://localhost:3020 (portal directly)
+
+# Or run directly without Docker (requires Node 24.12.0+)
 npm install
 npm run dev  # Starts webpack watch + nodemon
 ```
 
-Portal runs on `http://localhost:3020`, stub runs on `http://localhost:3021`. 
+**Services and Ports**:
+- **3019**: nginx gateway (gateway-routing user access, all modes upload endpoint)
+- **3020**: Portal application (frontend-redirect/direct user access)
+- **3021**: Document upload stub (Object Processor + CDP Uploader APIs)
+- **3022**: Document upload frontend stub (redirect mapping for frontend-redirect mode)
 
-**Default behavior**: `OBJECT_PROCESSOR_HOST` defaults to `http://document-upload-stub:3021` in `compose.yml`, so the portal uses the local stub automatically.
+**Default behavior**: `UPLOAD_MODE` defaults to `gateway-routing` and `OBJECT_PROCESSOR_HOST` defaults to `http://document-upload-stub:3021` in `compose.yml`, so the portal uses the local stub automatically.
 
 **To use real Object Processor**: Override with `OBJECT_PROCESSOR_HOST=http://fcp-sfd-object-processor:3004` in `.env`.
 
@@ -167,7 +229,7 @@ npm run lint
 npm run lint:fix
 ```
 
-Tests use Vitest with `vi.mock()` for dependency injection. See [test/unit/routes/document-upload.test.js](../test/unit/routes/document-upload.test.js) for patterns.
+Tests use Vitest with `vi.mock()` for dependency injection. See test files in `test/unit/` for patterns.
 
 ### Cognito Authentication
 
@@ -185,6 +247,8 @@ For production: set `COGNITO_ENABLED=true` and configure `COGNITO_DOMAIN`, `COGN
 - **`src/views/`** - Nunjucks templates
 - **`test/unit/`** - Vitest unit tests mirroring `src/` structure
 - **`document-upload-stub/`** - Local development stub (replaces Object Processor + CDP Uploader)
+- **`document-upload-frontend-stub/`** - Redirect mapper service (maps client identifiers to absolute URLs for frontend-redirect mode)
+- **`nginx/`** - Gateway configuration (routes `/upload-and-scan/` to uploader, `/fcp-sfd-doc-upload/` to frontend stub)
 
 ## Integration Points
 
@@ -194,11 +258,25 @@ For production: set `COGNITO_ENABLED=true` and configure `COGNITO_DOMAIN`, `COGN
    - Runs on `http://localhost:3021`
    - No authentication required
    - In-memory session storage
+   - Returns relative redirects (resolved by browser to originating domain)
+
+2. **Document Upload Frontend Stub** - Included in this repo at `document-upload-frontend-stub/`, used in frontend-redirect mode
+   - Maps client identifiers to absolute redirect URLs
+   - Runs on `http://localhost:3022`
+   - Accessed via gateway at `/fcp-sfd-doc-upload/{clientIdentifier}/*`
+   - Client mapping: `{'portal-stub': 'http://localhost:3020'}`
+
+3. **NGINX Gateway** - Included in this repo at `nginx/`, runs on `http://localhost:3019`
+   - Routes `/upload-and-scan/*` to document-upload-stub (uploader)
+   - Routes `/fcp-sfd-doc-upload/*` to document-upload-frontend-stub
+   - Routes all other requests to portal application
+   - Required for gateway-routing and frontend-redirect modes
 
 **Optional (Production/Testing)**:
 1. **Object Processor** - Backend API for SFD Document Upload Service at `OBJECT_PROCESSOR_HOST`
-2. **CDP Uploader** - File upload service (URL provided by Object Processor, browser connects directly)
+2. **CDP Uploader** - File upload service (browser connects via gateway or directly depending on mode)
 3. **AWS Cognito** - OAuth2 token provider via CDP API Gateway (required when using real Object Processor)
+4. **Document Upload Frontend** - Production redirect mapping service (for frontend-redirect mode in production)
 
 ## Common Tasks
 
