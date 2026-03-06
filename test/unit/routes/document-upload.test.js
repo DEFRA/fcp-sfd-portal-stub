@@ -165,7 +165,7 @@ describe('Document Upload Routes', () => {
         type: 'Invoice',
         reference: 'REF-2026-001',
         service: 'SFI'
-      })
+      }, '/document-upload/processing')
 
       expect(mockYarSet).toHaveBeenCalledWith('metadata', expect.objectContaining({
         sbi: 123456789,
@@ -174,7 +174,8 @@ describe('Document Upload Routes', () => {
         reference: 'REF-2026-001'
       }))
       expect(mockYarSet).toHaveBeenCalledWith('submissionId', 'test-uuid-1234')
-      expect(mockYarSet).toHaveBeenCalledWith('uploadUrl', mockInitiateResult.uploadUrl)
+      // In gateway-routing mode (default), uploadUrl is transformed to use gateway domain
+      expect(mockYarSet).toHaveBeenCalledWith('uploadUrl', 'http://localhost:3019/upload-and-scan/upload-123')
       expect(mockYarSet).toHaveBeenCalledWith('statusUrl', mockInitiateResult.statusUrl)
       expect(mockYarSet).toHaveBeenCalledWith('uploadId', mockInitiateResult.uploadId)
       expect(mockYarSet).toHaveBeenCalledWith('correlationId', mockInitiateResult.correlationId)
@@ -272,7 +273,8 @@ describe('Document Upload Routes', () => {
       expect(mockToolkit.view).toHaveBeenCalledWith('document-upload/upload', {
         pageTitle: 'Upload files',
         metadata: mockMetadata,
-        uploadUrl: mockUploadUrl
+        uploadUrl: mockUploadUrl,
+        uploadMode: 'gateway-routing'
       })
     })
 

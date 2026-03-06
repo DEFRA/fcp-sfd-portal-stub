@@ -62,16 +62,17 @@ describe('startServer', () => {
 
       expect(createServerSpy).toHaveBeenCalled()
       expect(hapiServerSpy).toHaveBeenCalled()
-      expect(mockHapiLoggerInfo).toHaveBeenNthCalledWith(
-        1,
+      expect(mockHapiLoggerInfo).toHaveBeenCalledWith(
         'Custom secure context is disabled'
       )
-      expect(mockHapiLoggerInfo).toHaveBeenNthCalledWith(
-        2,
+      expect(mockLoggerInfo).toHaveBeenCalledWith(
+        { uploadMode: 'gateway-routing' },
+        'Portal running in upload mode: gateway-routing'
+      )
+      expect(mockLoggerInfo).toHaveBeenCalledWith(
         'Server started successfully'
       )
-      expect(mockHapiLoggerInfo).toHaveBeenNthCalledWith(
-        3,
+      expect(mockLoggerInfo).toHaveBeenCalledWith(
         'Access your frontend on http://localhost:3097'
       )
     })
