@@ -10,7 +10,7 @@ services:
       COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID}
       COGNITO_CLIENT_SECRET: ${COGNITO_CLIENT_SECRET}
       OBJECT_PROCESSOR_HOST: ${OBJECT_PROCESSOR_HOST:-http://document-upload-stub:3021}
-      ADDITIONAL_UPLOAD_DOMAINS: ${ADDITIONAL_UPLOAD_DOMAINS:-http://localhost:3021}
+      ADDITIONAL_UPLOAD_DOMAINS: ${ADDITIONAL_UPLOAD_DOMAINS:-http://localhost:3019,http://localhost:3021}
       UPLOAD_MODE: ${UPLOAD_MODE:-gateway-routing}
       REDIRECT_AFTER_UPLOAD: ${REDIRECT_AFTER_UPLOAD:-/document-upload/processing}
       GATEWAY_URL: ${GATEWAY_URL:-http://localhost:3019}
