@@ -31,8 +31,8 @@
       Each file name must be unique, 20 characters or less, contain only letters and numbers, and contain no gaps.
     </p>
 
-    <!-- Upload form - JavaScript handles submission with redirect: 'manual' as required by CDP Uploader -->
-    <form id="document-upload-form" method="post" action="{{ uploadUrl }}" enctype="multipart/form-data">
+    <!-- Upload form - JavaScript handles submission in 'direct' mode, standard POST in 'gateway-routing' mode -->
+    <form id="document-upload-form" method="post" action="{{ uploadUrl }}" enctype="multipart/form-data" data-upload-mode="{{ uploadMode }}">
       
       <!-- Include all metadata as hidden fields -->
       <input type="hidden" name="sbi" value="{{ metadata.sbi }}">

@@ -13,6 +13,12 @@ services:
     networks:
       - fcp-sfd
 
+  nginx:
+    ports:
+      - '3019:80'
+    networks:
+      - fcp-sfd
+
 networks:
   fcp-sfd:
     driver: bridge

@@ -8,7 +8,7 @@ export const initiatePost = {
   method: 'POST',
   path: '/api/v1/initiate',
   handler: (request, h) => {
-    const { metadata } = request.payload
+    const { metadata, redirect } = request.payload
 
     const correlationId = randomUUID()
     const uploadId = randomUUID()
@@ -21,6 +21,7 @@ export const initiatePost = {
       correlationId,
       uploadId,
       metadata,
+      redirect: redirect || '/relative-redirect',
       status: 'IN_PROGRESS',
       createdAt: new Date().toISOString()
     })

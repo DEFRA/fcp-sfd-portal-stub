@@ -31,14 +31,14 @@ describe('contentSecurityPolicy', () => {
     expect(contentSecurityPolicy.options.frameAncestors).toEqual(['self'])
   })
 
-  test('should restrict the form action to self and CDP domains', () => {
-    expect(contentSecurityPolicy.options.formAction).toEqual(['self', 'https://*.cdp-int.defra.cloud'])
+  test('should restrict the form action to self in gateway-routing mode (default)', () => {
+    // Gateway routing mode only allows 'self' since nginx handles routing
+    expect(contentSecurityPolicy.options.formAction).toEqual(['self'])
   })
 
-  test('should allow connections to self and CDP domains', () => {
-    // In test environment, connectSrc includes additional domains from ADDITIONAL_UPLOAD_DOMAINS env var
-    expect(contentSecurityPolicy.options.connectSrc).toContain('self')
-    expect(contentSecurityPolicy.options.connectSrc).toContain('https://*.cdp-int.defra.cloud')
+  test('should allow connections to self only in gateway-routing mode (default)', () => {
+    // Gateway routing mode only allows 'self' since nginx handles routing
+    expect(contentSecurityPolicy.options.connectSrc).toEqual(['self'])
   })
 
   test('should generate nonces', () => {

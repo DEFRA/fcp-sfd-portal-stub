@@ -13,6 +13,11 @@ ARG PORT_DEBUG
 ENV PORT=${PORT}
 EXPOSE ${PORT} ${PORT_DEBUG}
 
+# Curl used for local health checks
+USER root
+RUN apk add --no-cache curl
+USER node
+
 COPY --chown=node:node --chmod=755 package*.json ./
 RUN npm install
 COPY --chown=node:node --chmod=755 . .
