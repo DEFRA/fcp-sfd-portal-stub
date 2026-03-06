@@ -81,11 +81,12 @@ export const metadataPost = {
 
       let uploadUrl = result.uploadUrl
 
-      // In gateway-routing mode, construct uploadUrl using gateway domain
+      // In gateway-routing mode, uploads go through gateway
       if (uploadMode === 'gateway-routing') {
         const gatewayUrl = config.get('gatewayUrl')
         uploadUrl = `${gatewayUrl}/upload-and-scan/${result.uploadId}`
       }
+      // In frontend-redirect and direct modes, browser uploads directly to CDP Uploader
 
       request.yar.set('metadata', metadata)
       request.yar.set('submissionId', submissionId)
