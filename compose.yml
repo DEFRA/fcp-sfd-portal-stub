@@ -10,7 +10,7 @@ services:
       COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID}
       COGNITO_CLIENT_SECRET: ${COGNITO_CLIENT_SECRET}
       OBJECT_PROCESSOR_HOST: ${OBJECT_PROCESSOR_HOST:-http://document-upload-stub:3021}
-      ADDITIONAL_UPLOAD_DOMAINS: ${ADDITIONAL_UPLOAD_DOMAINS:-http://localhost:3021}
+      ADDITIONAL_UPLOAD_DOMAINS: ${ADDITIONAL_UPLOAD_DOMAINS:-http://localhost:3019,http://localhost:3021}
       UPLOAD_MODE: ${UPLOAD_MODE:-gateway-routing}
       REDIRECT_AFTER_UPLOAD: ${REDIRECT_AFTER_UPLOAD:-/document-upload/processing}
       GATEWAY_URL: ${GATEWAY_URL:-http://localhost:3019}
@@ -19,6 +19,7 @@ services:
       - ./package.json:/home/node/package.json
     depends_on:
       - document-upload-stub
+      - document-upload-frontend-stub
     ports:
       - "3020:3020"
     healthcheck:
@@ -44,6 +45,24 @@ services:
       retries: 3
       start_period: 10s
 
+  document-upload-frontend-stub:
+    build:
+      context: ./document-upload-frontend-stub
+      target: development
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./document-upload-frontend-stub/src:/home/node/src
+      - ./document-upload-frontend-stub/package.json:/home/node/package.json
+    ports:
+      - "3022:3022"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3022/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   nginx:
     image: nginx:alpine
     volumes:
@@ -52,4 +71,6 @@ services:
       fcp-sfd-portal-stub:
         condition: service_healthy
       document-upload-stub:
+        condition: service_healthy
+      document-upload-frontend-stub:
         condition: service_healthy

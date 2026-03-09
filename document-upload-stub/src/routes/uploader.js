@@ -30,11 +30,12 @@ export const uploadPost = {
       updateSessionStatus(session.correlationId, 'SUCCESSFUL', 'Files uploaded and scanned successfully', 0)
     }, 2000)
 
-    // Make redirect relative (strip protocol/host) to simulate real CDP Uploader behavior
-    const relativeRedirect = session.redirect.replace(/^https?:\/\/[^/]+/, '')
+    // Return relative redirect (browser resolves to originating domain)
+    // In gateway-routing and frontend-redirect modes, requests come through gateway, so redirect resolves to gateway
+    // This allows NGINX to route /fcp-sfd-doc-upload/ paths to the frontend stub
+    const redirectUrl = session.redirect.replace(/^https?:\/\/[^/]+/, '')
+    request.logger.info({ correlationId: session.correlationId, redirect: redirectUrl }, 'Redirecting after upload')
 
-    request.logger.info({ correlationId: session.correlationId, redirect: relativeRedirect }, 'Redirecting after upload')
-
-    return h.redirect(relativeRedirect).code(302)
+    return h.redirect(redirectUrl).code(302)
   }
 }

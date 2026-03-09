@@ -69,17 +69,25 @@ export const metadataPost = {
 
     try {
       const uploadMode = config.get('uploadMode')
-      const redirect = config.get('redirectAfterUpload')
+      let redirect = config.get('redirectAfterUpload')
+
+      // In frontend-redirect mode, prepend client identifier prefix so NGINX routes to frontend stub
+      if (uploadMode === 'frontend-redirect') {
+        const clientIdentifier = 'portal-stub'
+        redirect = `/fcp-sfd-doc-upload/${clientIdentifier}${redirect}`
+      }
 
       const result = await initiateUpload(metadata, redirect)
 
       let uploadUrl = result.uploadUrl
 
-      // In gateway-routing mode, construct uploadUrl using gateway domain
-      if (uploadMode === 'gateway-routing') {
+      // In gateway-routing and frontend-redirect modes, uploads go through gateway
+      // This keeps all traffic through a single domain, simplifying CSP
+      if (uploadMode === 'gateway-routing' || uploadMode === 'frontend-redirect') {
         const gatewayUrl = config.get('gatewayUrl')
         uploadUrl = `${gatewayUrl}/upload-and-scan/${result.uploadId}`
       }
+      // In direct mode, browser uploads directly to CDP Uploader
 
       request.yar.set('metadata', metadata)
       request.yar.set('submissionId', submissionId)

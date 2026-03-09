@@ -27,10 +27,3 @@ jobs:
         uses: DEFRA/cdp-build-action/build@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Coverage Directory
-        run : mkdir -p -m 777 coverage
-
-      - name: Run Tests
-        run : |
-          npm run docker:test

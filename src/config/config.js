@@ -222,8 +222,8 @@ export const config = convict({
     env: 'ADDITIONAL_UPLOAD_DOMAINS'
   },
   uploadMode: {
-    doc: 'Upload mode: "direct" (browser posts direct to CDP Uploader) or "gateway-routing" (browser posts to client gateway)',
-    format: ['direct', 'gateway-routing'],
+    doc: 'Upload mode: "direct" (browser posts direct to CDP Uploader), "gateway-routing" (browser posts to client gateway), or "frontend-redirect" (redirects through redirect-mapper service)',
+    format: ['direct', 'gateway-routing', 'frontend-redirect'],
     default: 'gateway-routing',
     env: 'UPLOAD_MODE'
   },

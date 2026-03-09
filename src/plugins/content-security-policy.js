@@ -6,24 +6,25 @@ import { config } from '../config/config.js'
 
 const uploadMode = config.get('uploadMode')
 
-// Configure CSP based on upload mode
 const connectSrc = ['self']
 const formAction = ['self']
 
-if (uploadMode === 'direct') {
-  // Direct mode: Allow fetch() and form POST to CDP Uploader domains
-  connectSrc.push('https://*.cdp-int.defra.cloud')
-  formAction.push('https://*.cdp-int.defra.cloud')
-
-  // Allow additional upload domains (e.g., local development stub)
+// Gateway-routing mode uses only 'self' - NGINX handles all routing
+if (uploadMode !== 'gateway-routing') {
+  const cdpDomains = ['https://*.cdp-int.defra.cloud']
   const additionalDomains = config.get('additionalUploadDomains')
-  if (additionalDomains) {
-    const domains = additionalDomains.split(',').map(d => d.trim()).filter(d => d.length > 0)
-    connectSrc.push(...domains)
-    formAction.push(...domains)
+  const parsedAdditionalDomains = additionalDomains
+    ? additionalDomains.split(',').map(d => d.trim()).filter(d => d.length > 0)
+    : []
+
+  // Both direct and frontend-redirect modes allow form POST to uploader
+  formAction.push(...cdpDomains, ...parsedAdditionalDomains)
+
+  // Only direct mode needs connectSrc (for JavaScript fetch())
+  if (uploadMode === 'direct') {
+    connectSrc.push(...cdpDomains, ...parsedAdditionalDomains)
   }
 }
-// In gateway-routing mode, only 'self' is needed since nginx handles routing
 
 export const contentSecurityPolicy = {
   plugin: Blankie,
