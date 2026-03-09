@@ -1,677 +1,997 @@
-# FCP Rural Payments Portal Stub
+# Single Front Door Document Upload Integration Guide
 
-A reference implementation demonstrating how client portals (such as the Rural Payments portal) can integrate with the **Single Front Door (SFD) Document Upload Service**.
+This repository demonstrates **how client services integrate with the Single Front Door (SFD) Document Upload solution** to enable users to upload documents securely.
 
-This stub showcases the complete integration pattern including authentication, metadata submission, browser-based file uploads, and status tracking through the SFD infrastructure.
+## What This Repository Is
 
-> **IMPORTANT**: This particular pattern is still a work in progress that is in the process of being verified.  Once confirmed, this warning will be removed.
->
-> For latest progress contact John Watson (john.watson1@defra.gov.uk).
+This is a **reference implementation and learning resource** that shows three different patterns for integrating with SFD Document Upload. It's a working example of a client portal (like the Rural Payments Portal) that needs to allow users to upload documents through the SFD infrastructure.
 
-## Purpose
+**Key Points:**
 
-This stub portal serves as a **working example** for external teams integrating their portals with the SFD Document Upload Service. It demonstrates:
+- ✅ **Working demonstrations** of three integration patterns with pros/cons for each
+- ✅ **Technology agnostic** - While this example uses Node.js/Hapi.js, the patterns work with any tech stack
+- ✅ **Includes local stubs** - Run everything locally without external dependencies
+- ✅ **Production-ready patterns** - Real-world examples that can be adapted for your service
 
-- How to authenticate with the Object Processor using AWS Cognito (via CDP API Gateway)
-- How to initiate upload sessions with business metadata
-- How to integrate with the CDP Uploader for secure, browser-based file uploads
-- How to poll for upload status and display results to users
+## What You'll Learn
 
-## Architecture Overview
+This guide demonstrates:
 
-The SFD Document Upload Service consists of three main components working together. The architecture differs based on the upload mode you choose (see Upload Modes section below for details).
-
-### Component Roles
-
-**Portal Stub (this repository)**  
-- Client-facing GOV.UK frontend application
-- Collects business metadata (CRN, SBI, FRN, document type, reference)
-- Obtains OAuth2 tokens from AWS Cognito (when authentication enabled)
-- Calls Object Processor APIs to initiate uploads and check status
-- Handles browser-based file uploads using one of three patterns (see Upload Modes below)
-
-**Object Processor** ([DEFRA/fcp-sfd-object-processor](https://github.com/DEFRA/fcp-sfd-object-processor))
-- **The face of the SFD Document Upload Service**
-- Acts as an intermediary between clients and CDP Uploader
-- Validates JWT tokens from Cognito via Microsoft Entra ID (when authentication enabled)
-- Provides `/api/v1/initiate` endpoint to create upload sessions
-- Provides `/api/v1/status/{correlationId}` endpoint to query upload status
-- Receives callbacks from CDP Uploader when files are scanned
-- Persists metadata to MongoDB and publishes events to AWS SNS
-
-**CDP Uploader** ([DEFRA/cdp-uploader](https://github.com/DEFRA/cdp-uploader))
-- Handles browser-based file uploads via multipart form submissions
-- Performs virus scanning using ClamAV
-- Uploads clean files to AWS S3
-- Sends scan results back to Object Processor via callback endpoint
-- Responds to browser with 302 redirect on successful upload acceptance
-
-**Document Upload Frontend Stub** ([document-upload-frontend-stub/](document-upload-frontend-stub/))
-- Maps relative redirects from CDP Uploader to client-specific absolute URLs
-- Supports multi-client integration patterns
-- Only used in frontend-redirect mode
-- See [document-upload-frontend-stub/README.md](document-upload-frontend-stub/README.md) for details
-
-## Dependencies
-
-### Local Development (Default)
-
-For local development, this repository includes a **Document Upload Stub** ([document-upload-stub/](document-upload-stub/)) that replaces both the Object Processor and CDP Uploader services. This stub is **used by default** when running `docker compose up`, allowing you to run the portal end-to-end without any external dependencies.
-
-The stub provides all necessary endpoints:
-- `POST /api/v1/initiate` - Initiates upload sessions
-- `GET /api/v1/status/{correlationId}` - Returns upload status
-- `POST /upload-and-scan/{uploadId}` - Accepts file uploads
-
-**What the stub does:**
-- Accepts all uploads and marks them as SUCCESSFUL after 2 seconds
-- Uses in-memory storage (no database required)
-- Runs on port 3021 (accessible at `http://localhost:3021`)
-- No authentication required
-- Perfect for local testing and development
-
-**Content Security Policy Configuration:**
-
-The portal uses Content Security Policy (CSP) to restrict which domains the browser can connect to for file uploads. For the local stub to work, you need to allow `http://localhost:3021` in the CSP configuration.
-
-This is configured via the `ADDITIONAL_UPLOAD_DOMAINS` environment variable, which accepts a comma-separated list of domains:
-
-```bash
-# Allow browser to upload files to local stub
-ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3021
-
-# Multiple domains (if needed)
-ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3021,http://another-domain:8080
-```
-
-**For different upload modes:**
-- **gateway-routing** (default): No additional domains needed - uploads are same-origin via gateway
-- **frontend-redirect**: Include gateway domain to allow cross-origin form POST: `ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3019`
-- **direct**: Include stub uploader domain: `ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3021`
-
-These are configured appropriately per mode in [compose.yml](compose.yml).
-
-See [document-upload-stub/README.md](document-upload-stub/README.md) for more details.
-
-### Using Real Services (Optional)
-
-To connect to a **real Object Processor instance** instead of the stub, override the environment variable:
-
-```bash
-OBJECT_PROCESSOR_HOST=http://your-object-processor-host:3004
-```
-
-When using a real Object Processor:
-- The Object Processor will provide upload URLs pointing to the real CDP Uploader
-- You'll need AWS Cognito configured (`COGNITO_ENABLED=true`) if the Object Processor has authentication enabled
-- Files will be uploaded to real S3 storage
-- Virus scanning will be performed by the real CDP Uploader service
-
-This works automatically when both services run in the same Docker network (e.g., via `docker compose` in the parent `fcp-sfd-core` repository).
-
-## Authentication with Cognito
-
-The portal authenticates with the Object Processor using **AWS Cognito** via the **CDP API Gateway**.
-
-### Cognito Configuration
-
-Required environment variables (see [.env.example](.env.example)):
-
-```bash
-# Enable/disable Cognito authentication
-COGNITO_ENABLED=true
-
-# Cognito OAuth2 settings (required when COGNITO_ENABLED=true)
-COGNITO_DOMAIN=your-app.auth.eu-west-2.amazoncognito.com
-COGNITO_CLIENT_ID=your-client-id-here
-COGNITO_CLIENT_SECRET=your-client-secret-here
-```
-
-### Disabling Cognito for Local Development
-
-By default, Cognito is **disabled** for easier local development.
-
-## Environment Variables
-
-Copy [.env.example](.env.example) to `.env` and configure as needed:
-
-```bash
-# Copy the example file
-cp .env.example .env
-
-# Edit with your values
-vi .env
-```
-
-**Example configuration** (from `.env.example`):
-
-```bash
-# Enable Cognito authentication (default: false for local dev)
-COGNITO_ENABLED=false
-
-# AWS Cognito OAuth2 settings
-COGNITO_DOMAIN=your-service-c63f2.auth.eu-west-2.amazoncognito.com
-COGNITO_CLIENT_ID=your-app-client-id-here
-COGNITO_CLIENT_SECRET=your-app-client-secret-here
-
-# Object Processor location (default: docker network service name)
-OBJECT_PROCESSOR_HOST=http://document-upload-stub:3021
-
-# Upload mode (gateway-routing, frontend-redirect, or direct)
-UPLOAD_MODE=gateway-routing
-
-# Gateway URL for uploads
-GATEWAY_URL=http://localhost:3019
-
-# Redirect path after upload
-REDIRECT_AFTER_UPLOAD=/document-upload/processing
-
-# Additional upload domains for CSP
-# Different modes require different domains:
-# - gateway-routing: none needed (same-origin)
-# - frontend-redirect: http://localhost:3019 (gateway)
-# - direct: http://localhost:3021 (uploader stub)
-# Default includes both 3019 and 3021 for local dev convenience
-ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3019,http://localhost:3021
-```
-
-## Upload Modes
-
-This stub supports **three upload patterns** to demonstrate different integration approaches with CDP Uploader.
-
-The key difference is **where the browser sends file uploads and how redirects are handled**:
-
-| Mode | Progressive Enhancement | JavaScript Required | Use Case |
-|------|------------------------|---------------------|----------|
-| **gateway-routing** (recommended) | ✅ Yes | ❌ No | CDP services, services with gateway infrastructure |
-| **frontend-redirect** | ✅ Yes | ❌ No | Multi-client scenarios, external services needing absolute redirects |
-| **direct** (fallback) | ❌ No | ✅ Yes | Only when gateway/document-upload-frontend not possible |
-
-### Mode Comparison
-
-| Feature | gateway-routing | frontend-redirect | direct |
-|---------|----------------|-------------------|--------|
-| **Browser upload target** | Gateway domain | Gateway domain | CDP Uploader |
-| **User access point** | Gateway (localhost:3019) | Portal (localhost:3020) | Portal (localhost:3020) |
-| **Redirect handling** | Gateway routes relatively | Gateway proxies to frontend stub, then redirects | JavaScript intercepts |
-| **Works without JavaScript** | ✅ Yes | ✅ Yes | ❌ No |
-| **GOV.UK Service Manual compliant** | ✅ Yes | ✅ Yes | ❌ No |
-| **Infrastructure required** | Gateway (nginx, CloudFront) | Gateway + document upload frontend service | None |
-| **CSP complexity** | Simple (self only) | Simple (gateway domain only) | Complex (self + CDP domains) |  
-| **Accessibility** | ✅ Full | ✅ Full | ⚠️ Reduced |
-| **Multi-client support** | Per-client gateway config | ✅ Built-in | N/A |
+1. **Three integration patterns** for document upload (gateway routing, frontend redirect, and direct)
+2. **When to use each pattern** based on your infrastructure and requirements
+3. **Browser-based file upload flows** with sequence diagrams for each pattern
+4. **OAuth2 authentication** using AWS Cognito (optional, disabled by default in demos)
+5. **Status polling and user feedback** patterns
+6. **Local development setup** with included stubs
 
 ---
 
-###{#gateway-routing-mode} Gateway Routing Mode (Recommended for CDP Services)
+## Table of Contents
 
-**Best for:** CDP platform services, services with existing gateway infrastructure (nginx, CloudFront, API Gateway), any service requiring progressive enhancement.
+- [Understanding the SFD Document Upload Architecture](#understanding-the-sfd-document-upload-architecture)
+- [Three Integration Patterns](#three-integration-patterns)
+- [Pattern 1: Gateway Routing Mode](#pattern-1-gateway-routing-mode-recommended)
+- [Pattern 2: Frontend Redirect Mode](#pattern-2-frontend-redirect-mode)
+- [Pattern 3: Direct Mode](#pattern-3-direct-mode-fallback-only)
+- [AWS Cognito Authentication](#aws-cognito-authentication)
+- [Local Development with Stubs](#local-development-with-stubs)
+- [Advanced Configuration](#advanced-configuration)
+- [Implementation Details](#implementation-details)
+- [Testing](#testing)
+- [Related Repositories](#related-repositories)
 
-**What is gateway routing?**
+---
 
-Gateway routing uses a reverse proxy (e.g., nginx, CloudFront, API Gateway) as a single entry point for all browser requests. The browser only ever communicates with the gateway's domain, and the gateway intelligently routes requests to different backend services based on the URL path.
+## Understanding the SFD Document Upload Architecture
 
-This is how most production web applications are architected (e.g., CloudFront → multiple Lambda/ECS backends).
+The SFD Document Upload solution consists of three main components that work together:
 
-#### How It Works
+### The Components
+
+```
+┌─────────────────┐      ┌──────────────────┐     ┌─────────────────┐
+│  Your Portal    │─────▶│ Object Processor │────▶│  CDP Uploader   │
+│  (this repo)    │      │                  │     │                 │
+└─────────────────┘      └──────────────────┘     └─────────────────┘
+     │                           │                         │
+     │                           │◀───────────────┐        │
+     │                           │◀───callback────┘        │
+     │                           │                         │
+     │                           ▼                         ▼
+     │                    ┌──────────────┐         ┌──────────┐
+     └─────status check──▶│   MongoDB    │         │   AWS S3 │
+        (to Object Proc)  └──────────────┘         └──────────┘
+                                 ▲
+                                 │
+                  (Object Processor queries MongoDB)
+```
+
+**1. Your Portal Application (Client Service)**
+- **What you build** - The user-facing web application
+- **Responsibilities:**
+  - Collect business metadata from users (CRN, SBI, FRN, document type, etc.)
+  - Obtain OAuth2 tokens from AWS Cognito (optional, when authentication enabled)
+  - Call Object Processor APIs to initiate uploads
+  - Handle file upload forms (routing varies by integration pattern - see below)
+  - Poll for upload status and display results
+
+**2. Object Processor** ([DEFRA/fcp-sfd-object-processor](https://github.com/DEFRA/fcp-sfd-object-processor))
+- **Provided by SFD team** - The central API for document uploads
+- **Responsibilities:**
+  - Validate OAuth2 JWT tokens (when authentication enabled)
+  - Provide `/api/v1/initiate` endpoint to create upload sessions
+  - Provide `/api/v1/status/{correlationId}` endpoint to query upload status
+  - Receive callbacks from CDP Uploader when files are scanned
+  - Persist metadata to MongoDB
+  - Publish events to AWS SNS for downstream processing
+
+**3. CDP Uploader** ([DEFRA/cdp-uploader](https://github.com/DEFRA/cdp-uploader))
+- **Provided by CDP team** - The file upload and scanning service
+- **Responsibilities:**
+  - Accept file uploads directly from user browsers via multipart form POST
+  - Perform virus scanning using ClamAV
+  - Upload clean files to AWS S3
+  - Send scan results back to Object Processor via callback
+  - Redirect browser back to your portal after upload
+
+### How Files Flow
+
+**The key insight:** Files **never pass through your portal backend**. Instead:
+
+```
+User's Browser ──┬──▶ CDP Uploader ──▶ S3
+                 │    (via gateway or direct)
+                 │
+                 └──▶ Your Portal Backend
+                      (only metadata and status polling)
+```
+
+This architecture keeps large files out of your application, reducing backend load and simplifying infrastructure.
+
+---
+
+## Three Integration Patterns
+
+The SFD Document Upload solution supports **three different patterns** for integrating browser file uploads. Choose the pattern that best fits your infrastructure:
+
+| Pattern | Best For | JavaScript Required | Works Without JS |
+|---------|----------|---------------------|------------------|
+| **[Gateway Routing](#pattern-1-gateway-routing-mode-recommended)** | Clients that can set proxy pass on host domain such as CDP platform services | ❌ No | ✅ Yes |
+| **[Frontend Redirect](#pattern-2-frontend-redirect-mode)** | Clients that cannot set proxy pass on host domain (Not yet supported in Production) | ❌ No | ✅ Yes |
+| **[Direct](#pattern-3-direct-mode-fallback-only)** | Fallback (last resort only) | ✅ Yes | ❌ No |
+
+**Quick Decision Guide:**
+
+- **Are you building a CDP platform service?** → Use **Gateway Routing**
+- **Do you have control over gateway infrastructure (nginx, CloudFront, API Gateway)?** → Use **Gateway Routing**
+- **Are you an external service on a different domain without gateway control?** → Use **Frontend Redirect**
+- **Can you absolutely not use gateway infrastructure?** → Use **Direct** (but note the accessibility trade-offs)
+
+All three patterns are demonstrated in this repository with working examples you can run locally.
+
+---
+
+## Pattern 1: Gateway Routing Mode (Recommended)
+
+**Best for:** CDP platform services, services with infrastructure gateway capabilities (nginx, CloudFront, API Gateway)
+
+### What is Gateway Routing?
+
+Gateway routing uses a **reverse proxy** as a single entry point for all browser requests. The browser only ever communicates with one domain (the gateway), and the gateway intelligently routes requests to different backend services based on URL paths.
+
+This is the standard architecture pattern used by most production web applications.
+
+### How It Works - Sequence Diagram
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Browser as User Browser
+    participant Browser as User's Browser
     participant Gateway as Gateway<br/>(nginx/CloudFront)
-    participant Portal as Portal Application
+    participant Portal as Your Portal
     participant Processor as Object Processor
     participant Uploader as CDP Uploader
+    participant S3 as AWS S3
 
-    Browser->>Gateway: POST /document-upload/metadata
-    Gateway->>Portal: Forward request
-    Portal->>Processor: POST /api/v1/initiate<br/>(metadata, redirect: "/document-upload/processing")
-    Processor-->>Portal: {uploadUrl: "https://cdp-uploader.../upload-and-scan/{id}", ...}
-    Note over Portal: Replace uploadUrl domain<br/>with gateway URL
-    Portal-->>Gateway: Render upload form
-    Gateway-->>Browser: HTML form<br/>(action="/upload-and-scan/{id}")
+    Browser->>Gateway: POST /metadata (user data)
+    Gateway->>Portal: Route to portal
+    Portal->>Processor: POST /api/v1/initiate<br/>(metadata + redirect path)
+    Processor-->>Portal: {uploadId, uploadUrl, statusUrl}
+    Note over Portal: Override uploadUrl domain<br/>to use gateway URL
+    Portal-->>Gateway: Render upload form HTML
+    Gateway-->>Browser: Display form (action="/upload-and-scan/{id}")
     
-    Browser->>Gateway: POST /upload-and-scan/{id}<br/>(standard form submit, files)
-    Gateway->>Uploader: Proxy to CDP Uploader
-    Uploader->>Uploader: Virus scan + S3 upload
-    Uploader-->>Gateway: 302 Location: /document-upload/processing
-    Gateway-->>Browser: 302 (same domain)
-    Browser->>Gateway: GET /document-upload/processing
-    Gateway->>Portal: Forward request
-    Portal-->>Gateway: Processing page HTML
-    Gateway-->>Browser: Display processing page
+    Browser->>Gateway: POST /upload-and-scan/{id}<br/>(standard form, files)
+    Gateway->>Uploader: Route to CDP Uploader
+    Uploader->>S3: Virus scan + upload
+    Uploader-->>Gateway: 302 redirect: /processing
+    Gateway-->>Browser: Follow redirect (same domain)
+    
+    Browser->>Gateway: GET /processing
+    Gateway->>Portal: Route to portal
+    Portal->>Processor: GET /api/v1/status/{id}
+    Processor-->>Portal: Status update
+    Portal-->>Gateway: Display status page
+    Gateway-->>Browser: Show processing/success
 ```
 
-#### Step-by-Step Flow
+### Pros and Cons
 
-1. **Browser submits metadata** to gateway domain (e.g., `https://your-portal.gov.uk/metadata`)
-2. **Gateway routes** request to Portal application
-3. **Portal calls Object Processor** `/api/v1/initiate` with relative redirect path
-4. **Portal overrides uploadUrl** to use gateway domain: `/upload-and-scan/{uploadId}`
-5. **Browser receives upload form** with action pointing to gateway path
-6. **User submits files** via standard HTML form POST (no JavaScript)
-7. **Gateway proxies** upload to CDP Uploader
-8. **CDP Uploader scans files** and stores in S3
-9. **CDP Uploader returns** `302 Location: /document-upload/processing` (relative)
-10. **Browser follows redirect** within gateway domain
-11. **Gateway routes** to Portal's processing page
-12. **Portal polls status** and displays result
+**Pros:**
+- ✅ **Accessible** - Works perfectly without JavaScript
+- ✅ **Simple CSP** - Only `'self'` needed (everything is same-origin to the browser)
+- ✅ **Clean user experience** - Single domain throughout entire journey
+- ✅ **Standard web architecture** - How modern applications are built
 
-**Key insight:** The gateway makes multiple backend services appear as one unified application to the browser. Everything is same-origin.
+**Cons:**
+- ⚠️ Requires gateway infrastructure (nginx, CloudFront, etc.)
+- ⚠️ Gateway must be configured to route `/upload-and-scan/*` to CDP Uploader
 
-#### Configuration
+### Running the Demo
 
 ```bash
-UPLOAD_MODE=gateway-routing  # Default
+# Start all services (portal, stub APIs, and nginx gateway)
+docker compose up
+
+# Open your browser
+🌐 http://localhost:3019
+```
+
+**Localhost Ports Explained:**
+
+| Port | Service | Purpose | Accessed By |
+|------|---------|---------|-------------|
+| **3019** | NGINX Gateway | Reverse proxy - **YOUR ENTRY POINT** | Users (in gateway-routing mode) |
+| 3020 | Portal Application | Your web app backend | Gateway (proxied) |
+| 3021 | Document Upload Stub | Mock Object Processor + CDP Uploader | Portal + Gateway |
+
+**What happens when you run this:**
+
+1. Docker Compose starts 4 containers: portal, stub APIs, frontend stub, and NGINX gateway
+2. NGINX is configured to:
+   - Route ALL requests from `localhost:3019` based on path
+   - Route `/upload-and-scan/*` → Document Upload Stub (3021)
+   - Route everything else → Portal Application (3020)
+3. Users only see `localhost:3019` - everything appears same-origin
+
+### Try It Yourself
+
+1. Visit [http://localhost:3019/document-upload/sign-in](http://localhost:3019/document-upload/sign-in)
+2. Enter CRN: `1234567890`
+3. Click "Continue"
+4. Fill in metadata:
+   - SBI: `123456789`
+   - FRN: `1234567890`
+   - Reference: `My Test Upload`
+   - Type: Select "CS Agreement Evidence"
+   - Service: Select "FCP SFD Frontend"
+5. Click "Continue"
+6. Upload a file using the standard HTML form (no JavaScript needed!)
+7. Watch it process and succeed
+
+**Note:** In this demo, the stub automatically marks all uploads as successful after 2 seconds.
+
+### Configuration Files
+
+**Environment variables:**
+```bash
+UPLOAD_MODE=gateway-routing
 GATEWAY_URL=http://localhost:3019
 REDIRECT_AFTER_UPLOAD=/document-upload/processing
 ```
 
-**Visit:** `http://localhost:3019` (nginx gateway)
-
-#### Benefits
-
-- ✅ **Progressive enhancement** - Works without JavaScript
-- ✅ **GOV.UK Service Manual compliant**
-- ✅ **Simple CSP** - Only `'self'` needed (no cross-origin)
-- ✅ **Accessible** - Works for all users
-- ✅ **Standard architecture** - How production web apps work
-- ✅ **Clean URLs** - Single domain for entire user journey
-
-#### Requirements
-
-- Gateway infrastructure (nginx, CloudFront, API Gateway, etc.)
-- Gateway configuration to route `/upload-and-scan/*` to CDP Uploader
-
-#### Files
-
-- [nginx/nginx.conf](nginx/nginx.conf) - Example gateway routing rules
-- [compose.yml](compose.yml) - nginx service on port 3019
+**Key implementation files:**
+- [nginx/nginx.conf](nginx/nginx.conf) - Gateway routing rules
 - [src/routes/document-upload.js](src/routes/document-upload.js) - uploadUrl override logic
+- [compose.yml](compose.yml) - Docker service definitions
 
 ---
 
-### Frontend Redirect Mode (Recommended for Multi-Client Scenarios)
+## Pattern 2: Frontend Redirect Mode
 
-**Best for:** External services on different domains (e.g., Rural Payments Portal in Crown Hosting), scenarios where multiple clients need centralized redirect mapping, services that cannot configure gateway-level routing.
+**Best for:** External services on different domains, multi-client scenarios, services without gateway control
 
-**What is frontend redirect mode?**
+> **Note**: Single Front Door have not developed infrastructure to support this until there is evidence a client needs this level of complexity.
 
-Frontend redirect mode solves the challenge where:
-1. Multiple client portals exist on different domains (e.g., `client1.gov.uk`, `client2.org.uk`)
-2. CDP Uploader returns relative redirects
-3. Each client needs redirects transformed to their absolute domain
-4. A central "redirect mapper" service owned by the document upload team handles the transformation
+### What is Frontend Redirect Mode?
 
-This pattern is valuable when:
+Frontend redirect mode solves a specific challenge:
+- Your portal runs on `client1.gov.uk`
+- CDP Uploader runs on a different domain and returns **relative** redirects
+- After upload, the browser needs to return to `client1.gov.uk/processing`
+- A central "redirect mapper" service translates relative redirects into absolute URLs for each client
+
+This pattern is useful when:
+- Multiple client portals exist on different domains
 - Clients don't control gateway infrastructure (e.g., external portals in Crown Hosting)
-- Multiple clients need different redirect destinations
-- You want centralized redirect mapping logic for consistency
+- You want centralized redirect mapping logic maintained by the SFD team
 
-#### How It Works
+### How It Works - Sequence Diagram
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Browser as User Browser
-    participant Portal as Portal Application<br/>(localhost:3020)
+    participant Browser as User's Browser
+    participant Portal as Your Portal<br/>(client domain)
     participant Processor as Object Processor
-    participant Gateway as Gateway<br/>(nginx localhost:3019)
+    participant Gateway as Gateway<br/>(SFD domain)
     participant Uploader as CDP Uploader
-    participant Frontend as Document Upload<br/>Frontend Stub
+    participant Frontend as Document Upload<br/>Frontend Service
+    participant S3 as AWS S3
 
-    Browser->>Portal: POST /document-upload/metadata
-    Portal->>Processor: POST /api/v1/initiate<br/>(metadata, redirect: "/fcp-sfd-doc-upload/portal-stub/document-upload/processing")
-    Note over Portal: Portal prepends<br/>/fcp-sfd-doc-upload/{client-identifier}/<br/>to redirect path
-    Processor-->>Portal: {uploadUrl: "http://cdp-uploader.../upload-and-scan/{id}", ...}
-    Note over Portal: Portal overrides uploadUrl<br/>to use gateway domain
-    Portal-->>Browser: HTML form<br/>(action="http://localhost:3019/upload-and-scan/{id}")
+    Browser->>Portal: POST /metadata (user data)
+    Portal->>Processor: POST /api/v1/initiate<br/>(redirect: "/fcp-sfd-doc-upload/YOUR-ID/processing")
+    Note over Portal: Portal prepends mapper prefix<br/>to redirect path
+    Processor-->>Portal: {uploadId, uploadUrl, statusUrl}
+    Note over Portal: Override uploadUrl<br/>to use gateway domain
+    Portal-->>Browser: Render upload form<br/>(action="https://sfd-gateway/upload/{id}")
     
-    Browser->>Gateway: POST /upload-and-scan/{id}<br/>(standard form submit, files)
-    Gateway->>Uploader: Proxy to CDP Uploader
-    Uploader->>Uploader: Virus scan + S3 upload
-    Uploader-->>Gateway: 302 Location: /fcp-sfd-doc-upload/portal-stub/document-upload/processing
-    Note over Gateway: NGINX rule matches<br/>/fcp-sfd-doc-upload/ path
-    Gateway->>Frontend: Proxy to frontend stub
-    Note over Frontend: Extract identifier: "portal-stub"<br/>Lookup: "http://localhost:3020"<br/>Extract path: "/document-upload/processing"
-    Frontend-->>Gateway: 302 Location: http://localhost:3020/document-upload/processing
-    Gateway-->>Browser: 302 Location: http://localhost:3020/document-upload/processing
+    Browser->>Gateway: POST /upload-and-scan/{id}<br/>(cross-origin form POST, files)
+    Gateway->>Uploader: Route to CDP Uploader
+    Uploader->>S3: Virus scan + upload
+    Uploader-->>Gateway: 302: /fcp-sfd-doc-upload/YOUR-ID/processing
     
-    Browser->>Portal: GET /document-upload/processing
-    Portal-->>Browser: Display processing page
+    Gateway->>Frontend: Route to frontend service
+    Note over Frontend: Extract "YOUR-ID"<br/>Lookup: "https://client1.gov.uk"<br/>Extract path: "/processing"
+    Frontend-->>Gateway: 302: https://client1.gov.uk/processing
+    Gateway-->>Browser: Follow redirect
+    
+    Browser->>Portal: GET /processing
+    Portal->>Processor: GET /api/v1/status/{id}
+    Processor-->>Portal: Status update
+    Portal-->>Browser: Show processing/success
 ```
 
-#### Step-by-Step Flow
+### Pros and Cons
 
-1. **User accesses portal** at `http://localhost:3020` (direct portal access)
-2. **Browser submits metadata** to portal
-3. **Portal prepends redirect mapper prefix** to redirect: `/fcp-sfd-doc-upload/{client-identifier}/document-upload/processing`
-4. **Portal calls Object Processor** `/api/v1/initiate` with prefixed redirect
-5. **Portal overrides uploadUrl** to use gateway domain: `http://localhost:3019/upload-and-scan/{uploadId}`
-6. **Browser receives upload form** with action pointing to gateway (cross-origin from browser's perspective)
-7. **User submits files** via standard HTML form POST (no JavaScript)
-8. **Gateway proxies** upload to CDP Uploader
-9. **CDP Uploader scans files** and stores in S3
-10. **CDP Uploader returns relative redirect**: `/fcp-sfd-doc-upload/portal-stub/document-upload/processing`
-11. **Browser follows redirect** (resolves to gateway domain `http://localhost:3019/fcp-sfd-doc-upload/...`)
-12. **Gateway NGINX rule matches** `/fcp-sfd-doc-upload/` path and proxies to document-upload-frontend stub
-13. **Frontend stub extracts identifier** and looks up client's absolute domain
-14. **Frontend stub redirects (absolute)** to client domain: `http://localhost:3020/document-upload/processing`
-15. **Browser arrives** at portal's processing page
-16. **Portal polls status** and displays result
+**Pros:**
+- ✅ **Accessible** - Works without JavaScript
+- ✅ **Multi-client support** - One redirect mapper service supports many clients
+- ✅ **No gateway required on your side** - You don't need to configure routing infrastructure
+- ✅ **Centralized mapping** - SFD team manages the redirect logic
 
-**Key insights:** 
-- Users access the portal directly (localhost:3020), but all uploads route through gateway (localhost:3019)
-- This keeps all browser traffic through a single upload domain, simplifying CSP
-- NGINX handles all routing infrastructure without application-level redirect detection
+**Cons:**
+- ⚠️ Requires SFD team to develop and maintain Document Upload Frontend service
+- ⚠️ Your client identifier must be registered in the mapping service
+- ⚠️ CSP must allow cross-origin form POST to gateway domain
 
-#### Configuration
+### Running the Demo
 
+```bash
+# Start with frontend-redirect mode
+UPLOAD_MODE=frontend-redirect docker compose up
+
+# Open your browser
+🌐 http://localhost:3020
+```
+
+**Localhost Ports Explained:**
+
+| Port | Service | Purpose | Accessed By |
+|------|---------|---------|-------------|
+| **3020** | Portal Application | Your web app - **YOUR ENTRY POINT** | Users (in frontend-redirect mode) |
+| 3019 | NGINX Gateway | Handles uploads and redirect mapping | Browser (for file uploads) |
+| 3021 | Document Upload Stub | Mock Object Processor + CDP Uploader | Portal + Gateway |
+| 3022 | Frontend Stub | Mock redirect mapper service | Gateway (for redirects) |
+
+**What happens when you run this:**
+
+1. Docker Compose starts 4 containers
+2. Users access your portal directly at `localhost:3020`
+3. When uploading, the HTML form points to `localhost:3019` (cross-origin)
+4. After upload, the redirect chain is:
+   - CDP Uploader → Gateway → Frontend Stub → Your Portal
+5. Frontend Stub maps `portal-stub` identifier → `http://localhost:3020`
+
+### Try It Yourself
+
+1. Visit [http://localhost:3020/document-upload/sign-in](http://localhost:3020/document-upload/sign-in)
+2. Enter CRN: `1234567890`
+3. Fill in metadata
+4. Upload a file - notice the form action points to `localhost:3019` (cross-origin)
+5. After upload, observe the redirect chain bringing you back to `localhost:3020/processing`
+6. Watch it process and succeed
+
+**Open your browser's Network tab** to see the redirect chain in action!
+
+### Configuration Files
+
+**Environment variables:**
 ```bash
 UPLOAD_MODE=frontend-redirect
-GATEWAY_URL=http://localhost:3019  # Gateway domain for uploads
+GATEWAY_URL=http://localhost:3019
 REDIRECT_AFTER_UPLOAD=/document-upload/processing
-ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3019  # CSP allows form POST to gateway
+ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3019  # Allow cross-origin form POST
 ```
 
-**Visit:** `http://localhost:3020` (portal direct access)
-
-#### Benefits
-
-- ✅ **Progressive enhancement** - Works without JavaScript
-- ✅ **GOV.UK Service Manual compliant**
-- ✅ **Multi-client support** - Centralized redirect mapping
-- ✅ **No gateway required** - Client doesn't need to configure routing
-- ✅ **Accessible** - Works for all users
-- ✅ **Extensible** - Easy to add new clients to mapping
-
-#### Requirements
-
-- Gateway with NGINX routing rules (included in this repo at [nginx/nginx.conf](nginx/nginx.conf))
-- Document upload frontend stub running (included in this repo at [document-upload-frontend-stub/](document-upload-frontend-stub/))
-- Client identifier configured in frontend stub
-- CSP allows form submissions to gateway domain (via `ADDITIONAL_UPLOAD_DOMAINS`)
-
-#### Files
-
-- [nginx/nginx.conf](nginx/nginx.conf) - Gateway routing rules (proxies `/fcp-sfd-doc-upload/` to frontend stub)
-- [document-upload-frontend-stub/](document-upload-frontend-stub/) - Redirect mapping service
-- [document-upload-frontend-stub/src/routes/redirect.js](document-upload-frontend-stub/src/routes/redirect.js) - Client identifier to domain mapping
-- [src/routes/document-upload.js](src/routes/document-upload.js#L73-L78) - Redirect prefix logic
-- [src/plugins/content-security-policy.js](src/plugins/content-security-policy.js#L25-L34) - CSP configuration
+**Key implementation files:**
+- [document-upload-frontend-stub/src/routes/redirect.js](document-upload-frontend-stub/src/routes/redirect.js) - Client identifier mapping
+- [nginx/nginx.conf](nginx/nginx.conf) - Gateway routing (proxies `/fcp-sfd-doc-upload/` to frontend stub)
+- [src/routes/document-upload.js](src/routes/document-upload.js) - Redirect prefix logic
+- [src/plugins/content-security-policy.js](src/plugins/content-security-policy.js) - CSP configuration
 
 ---
 
-### Direct Mode (Fallback Only)
+## Pattern 3: Direct Mode (Fallback Only)
 
-**Best for:** Situations where neither gateway routing nor redirect mapper are feasible (rare). **Use only as a last resort.**
+**Best for:** Situations where neither gateway routing nor frontend redirect are feasible (use only as last resort)
 
-**⚠️ This mode requires JavaScript and does not support progressive enhancement.** It fails GOV.UK Service Manual accessibility requirements.
+⚠️ **Warning:** This mode requires JavaScript and fails accessibility requirements.
 
-#### How It Works
+### What is Direct Mode?
+
+Direct mode has browsers upload files directly to the CDP Uploader domain without any gateway or redirect mapping infrastructure. Because this is a cross-origin request with redirect responses, JavaScript is required to detect the opaque redirect and manually navigate back to your portal.
+
+**Use this only when:**
+- You have no gateway infrastructure available
+- Frontend redirect mode cannot be configured
+- You accept the accessibility and progressive enhancement trade-offs
+
+### How It Works - Sequence Diagram
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Browser as User Browser<br/>(with JavaScript)
-    participant Portal as Portal Application
+    participant Browser as User's Browser<br/>(requires JavaScript)
+    participant Portal as Your Portal
     participant Processor as Object Processor
-    participant Uploader as CDP Uploader
+    participant Uploader as CDP Uploader<br/>(different domain)
+    participant S3 as AWS S3
 
-    Browser->>Portal: POST /document-upload/metadata
-    Portal->>Processor: POST /api/v1/initiate<br/>(metadata)
-    Processor-->>Portal: {uploadUrl: "https://cdp-uploader.../upload-and-scan/{id}", ...}
-    Portal-->>Browser: HTML form<br/>(action="{uploadUrl}")
+    Browser->>Portal: POST /metadata (user data)
+    Portal->>Processor: POST /api/v1/initiate
+    Processor-->>Portal: {uploadId, uploadUrl, statusUrl}
+    Portal-->>Browser: Form (action="{uploadUrl}")<br/>+ JavaScript handler
     
-    Note over Browser: JavaScript intercepts<br/>form submission
+    Note over Browser: User submits form<br/>JavaScript intercepts
     Browser->>Uploader: fetch(uploadUrl, {redirect: 'manual'})<br/>(cross-origin, files)
-    Uploader->>Uploader: Virus scan + S3 upload
-    Uploader-->>Browser: 302 Location: /document-upload/processing<br/>(opaque response due to CORS)
-    Note over Browser: JavaScript detects<br/>opaqueredirect response
-    Browser->>Browser: window.location.href = '/document-upload/processing'
-    Browser->>Portal: GET /document-upload/processing
-    Portal-->>Browser: Display processing page
+    Uploader->>S3: Virus scan + upload
+    Uploader-->>Browser: 302 redirect: /processing<br/>(opaque response - CORS)
+    
+    Note over Browser: JavaScript detects opaqueredirect<br/>Manually navigate
+    Browser->>Browser: window.location = '/processing'
+    Browser->>Portal: GET /processing
+    Portal->>Processor: GET /api/v1/status/{id}
+    Processor-->>Portal: Status update
+    Portal-->>Browser: Show processing/success
 ```
 
-#### Step-by-Step Flow
+### Pros and Cons
 
-1. **Browser submits metadata** to portal
-2. **Portal calls Object Processor** `/api/v1/initiate`
-3. **Browser receives upload form** with action pointing directly to CDP Uploader domain
-4. **User clicks submit** - JavaScript intercepts the event
-5. **JavaScript uses fetch()** with `redirect: 'manual'` to POST files (cross-origin)
-6. **CDP Uploader scans files** and stores in S3
-7. **CDP Uploader returns** `302` redirect (browser sees `opaqueredirect` due to CORS)
-8. **JavaScript detects** opaque redirect and manually navigates to `/document-upload/processing`
-9. **Browser loads** portal's processing page
-10. **Portal polls status** and displays result
+**Pros:**
+- ✅ **Simpler infrastructure** - No gateway or frontend redirect service needed
+- ✅ **May be only option** in very constrained environments
 
-**Key insight:** Without gateway or document-upload-frontend, JavaScript must manually handle cross-origin redirects, creating a dependency on client-side code.
-
-#### Configuration
-
-```bash
-UPLOAD_MODE=direct
-ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3021  # CSP allows CDP Uploader
-```
-
-**Visit:** `http://localhost:3020`
-
-#### Limitations
-
+**Cons:**
 - ❌ **Requires JavaScript** - Users without JS cannot upload files
 - ❌ **Not accessible** - Fails WCAG/GOV.UK accessibility requirements
+- ❌ **Not Service Manual compliant** - Does not meet progressive enhancement standard
 - ❌ **Cross-origin complexity** - Requires careful CSP configuration
-- ❌ **Progressive enhancement failure** - Does not comply with Service Manual
+- ❌ **Reduced browser compatibility** - Depends on fetch API and redirect: 'manual'
+- ❌ **Poor user experience** - Users with JS disabled see a broken flow
 
-#### Benefits
+### Running the Demo
 
-- ✅ **Simpler infrastructure** - No gateway or document-upload-frontend needed
-- ✅ **May be only option** in constrained environments
+```bash
+# Start with direct mode
+UPLOAD_MODE=direct docker compose up
 
-#### Files
+# Open your browser
+🌐 http://localhost:3020
+```
 
+**Localhost Ports Explained:**
+
+| Port | Service | Purpose | Accessed By |
+|------|---------|---------|-------------|
+| **3020** | Portal Application | Your web app - **YOUR ENTRY POINT** | Users (in direct mode) |
+| 3021 | Document Upload Stub | Mock Object Processor + CDP Uploader | Portal + Browser (direct) |
+| 3019 | Gateway | Not used in direct mode | N/A |
+| 3022 | Frontend Stub | Not used in direct mode | N/A |
+
+**What happens when you run this:**
+
+1. Docker Compose starts all containers
+2. Users access your portal directly at `localhost:3020`
+3. When uploading, JavaScript `fetch()` sends files directly to `localhost:3021`
+4. JavaScript must detect the opaque redirect and manually navigate
+
+### Try It Yourself
+
+1. Visit [http://localhost:3020/document-upload/sign-in](http://localhost:3020/document-upload/sign-in)
+2. Enter CRN: `1234567890`
+3. Fill in metadata
+4. Upload a file - JavaScript will intercept the form submission
+5. **Open your browser's Console tab** to see the fetch() call and redirect detection
+6. **Try disabling JavaScript** - observe that the upload fails completely
+
+### Configuration Files
+
+**Environment variables:**
+```bash
+UPLOAD_MODE=direct
+ADDITIONAL_UPLOAD_DOMAINS=http://localhost:3021  # Allow direct uploader access
+```
+
+**Key implementation files:**
 - [src/client/javascript/document-upload.js](src/client/javascript/document-upload.js) - JavaScript fetch() interception
 
 ---
 
-### Switching Between Modes
+## AWS Cognito Authentication
 
-All three modes work with `docker compose up`. Set the `UPLOAD_MODE` environment variable to switch between them:
+All three patterns support optional OAuth2 authentication using **AWS Cognito** via the CDP API Gateway.
+
+### When is Cognito Used?
+
+- **Your portal** obtains OAuth2 access tokens from Cognito using client credentials flow
+- **Object Processor** validates tokens via Microsoft Entra ID
+- This ensures only authorized services can initiate uploads
+
+### Disabled by Default in All Demos
+
+For easier local development, **Cognito is disabled by default** in all three demo modes.
 
 ```bash
-# Gateway routing mode (DEFAULT - recommended for CDP services)
-# Users access portal through gateway, uploads go through gateway
-docker compose up
-# 🌐 Visit http://localhost:3019 (nginx gateway)
-# ✅ Progressive enhancement, no JavaScript required
-# ✅ Same-origin uploads (simplest CSP)
-
-# Frontend redirect mode (recommended for multi-client external services)
-# Users access portal directly, uploads go through gateway, redirects mapped by frontend stub
-UPLOAD_MODE=frontend-redirect docker compose up
-# 🌐 Visit http://localhost:3020 (portal application)
-# ✅ Progressive enhancement, no JavaScript required
-# ✅ Multi-client redirect mapping
-# ⚠️ Cross-origin form POST to gateway (requires ADDITIONAL_UPLOAD_DOMAINS)
-
-# Direct mode (fallback only - requires JavaScript, not accessible)
-# Users access portal directly, uploads go directly to uploader, JavaScript handles redirects
-UPLOAD_MODE=direct docker compose up
-# 🌐 Visit http://localhost:3020 (portal application)
-# ❌ Requires JavaScript - fails without client-side code
-# ❌ Not GOV.UK Service Manual compliant
+# In .env (default for local development)
+COGNITO_ENABLED=false
 ```
 
-**What changes between modes:**
-- **User access point**: Gateway (3019) vs Portal (3020)
-- **Upload routing**: All go through gateway in gateway-routing/frontend-redirect; direct to uploader in direct mode
-- **Redirect handling**: Relative (gateway-routing) vs mapped (frontend-redirect) vs JavaScript (direct)
-- **CSP configuration**: Automatic based on mode
-- **JavaScript requirement**: None (gateway-routing/frontend-redirect) vs Required (direct)
+When disabled:
+- No OAuth2 tokens are sent to Object Processor
+- Object Processor must also have authentication disabled (`AUTH_ENABLED=false`)
+- Document upload stub works without authentication
 
-### Port Reference
+### Enabling Cognito
 
-- **3019** - nginx gateway (gateway-routing mode user access, all modes upload endpoint)
-- **3020** - Portal application (frontend-redirect and direct mode user access)
-- **3021** - Document upload stub (Object Processor + CDP Uploader backend APIs)
-- **3022** - Document upload frontend stub (redirect mapping for frontend-redirect mode)
+To enable authentication:
 
-### Which Mode Should I Use?
+1. Copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
 
-**Decision Tree:**
+2. Edit `.env` and set:
+   ```bash
+   COGNITO_ENABLED=true
+   COGNITO_DOMAIN=your-service-c63f2.auth.eu-west-2.amazoncognito.com
+   COGNITO_CLIENT_ID=your-app-client-id-here
+   COGNITO_CLIENT_SECRET=your-app-client-secret-here
+   ```
 
-1. **Are you building a CDP platform service?** → Use **gateway-routing** mode
-   - You have infrastructure gateway capabilities
-   - Standard pattern for CDP services
+3. Restart the services:
+   ```bash
+   docker compose restart
+   ```
+
+**When to enable:**
+- Testing with real Object Processor (production/staging environments)
+- Integration testing with full authentication flow
+- Production deployments
+
+### How Cognito Authentication Works
+
+When `COGNITO_ENABLED=true`:
+
+1. **Portal requests token** from Cognito using client credentials grant:
+   ```
+   POST https://{COGNITO_DOMAIN}/oauth2/token
+   Authorization: Basic {base64(clientId:clientSecret)}
+   Content-Type: application/x-www-form-urlencoded
    
-2. **Are you an external service on a different domain (e.g., Crown Hosting)?** → Use **frontend-redirect** mode
-   - Especially if multiple clients will use this service
-   - Cannot configure gateway at your infrastructure level
-   - Need progressive enhancement compliance
+   grant_type=client_credentials&scope=api/write
+   ```
+
+2. **Cognito returns JWT** access token
+
+3. **Portal calls Object Processor** with token:
+   ```
+   POST /api/v1/initiate
+   Authorization: Bearer {token}
+   Content-Type: application/json
    
-3. **Can you absolutely not use gateway-routing or frontend-redirect?** → Use **direct** mode (last resort)
-   - Accept trade-off: simpler infrastructure but fails accessibility
-   - Not compliant with GOV.UK Service Manual
+   {...metadata...}
+   ```
 
-### Content Security Policy (CSP) by Mode
+4. **Object Processor validates token** with Microsoft Entra ID
 
-The stub automatically configures CSP based on `UPLOAD_MODE`:
+5. **If valid**, Object Processor processes the request
 
-| Directive | gateway-routing | frontend-redirect | direct |
-|-----------|----------------|-------------------|--------|
-| `connect-src` | `'self'` | `'self'` | `'self'`, CDP domains, `ADDITIONAL_UPLOAD_DOMAINS` |
-| `form-action` | `'self'` | `'self'`, `ADDITIONAL_UPLOAD_DOMAINS` | `'self'`, CDP domains, `ADDITIONAL_UPLOAD_DOMAINS` |
+**Token caching:** The portal caches tokens and only requests new ones when they expire, reducing calls to Cognito.
 
-**Note:** In local development with frontend-redirect mode, `ADDITIONAL_UPLOAD_DOMAINS` should include the gateway domain (`http://localhost:3019`) to allow cross-origin form submissions to the gateway.
-
-See [src/plugins/content-security-policy.js](src/plugins/content-security-policy.js) for implementation.
+**Implementation:** See [src/common/helpers/cognito.js](src/common/helpers/cognito.js) for details.
 
 ---
 
-## Browser-Based Upload Architecture
+## Local Development with Stubs
 
-- Docker and Docker Compose
+This repository includes two stub services that eliminate external dependencies for local development.
 
-### Quick Start
+### 1. Document Upload Stub
 
-**Gateway routing mode (DEFAULT)** - progressive enhancement, no JS required:
+**Location:** [document-upload-stub/](document-upload-stub/)
+
+**Simulates:** Object Processor + CDP Uploader (both in one service)
+
+**What it stubs:**
+
+| Component | Endpoints | Description |
+|-----------|-----------|-------------|
+| **Object Processor** | `POST /api/v1/initiate` | Creates upload sessions, returns `{uploadId, uploadUrl, statusUrl, correlationId}` |
+| | `GET /api/v1/status/{correlationId}` | Returns upload status (`IN_PROGRESS` → `SUCCESSFUL`) |
+| **CDP Uploader** | `POST /upload-and-scan/{uploadId}` | Accepts file uploads via multipart form POST |
+| | | Returns `302` redirect to processing page |
+
+**Features:**
+- ✅ In-memory storage (no database required)
+- ✅ Returns relative redirects (like real CDP Uploader)
+- ✅ Automatically marks uploads as `SUCCESSFUL` after 2 seconds
+- ✅ No authentication required
+- ✅ Runs on port 3021
+- ✅ CORS enabled for browser access
+
+**Usage:** This stub is **used by default** in `docker compose up`. You don't need to configure anything.
+
+**To use real Object Processor instead:**
 ```bash
-docker compose up
-# Visit http://localhost:3019
+# In .env file
+OBJECT_PROCESSOR_HOST=http://real-object-processor:3004
+COGNITO_ENABLED=true  # Required for real Object Processor
 ```
 
-**Frontend redirect mode** - for multi-client scenarios, progressive enhancement:
+**See:** [document-upload-stub/README.md](document-upload-stub/README.md) for implementation details.
+
+### 2. Document Upload Frontend Stub
+
+**Location:** [document-upload-frontend-stub/](document-upload-frontend-stub/)
+
+**Simulates:** Document Upload Frontend redirect mapper service
+
+**What it stubs:**
+
+The production Document Upload Frontend service that maps client identifiers to absolute redirect URLs.
+
+**How it works:**
+
+1. Receives request: `GET /fcp-sfd-doc-upload/{clientIdentifier}/some/path`
+2. Extracts `clientIdentifier` (e.g., `portal-stub`)
+3. Looks up mapping:
+   ```javascript
+   const CLIENT_MAPPINGS = {
+     'portal-stub': 'http://localhost:3020',
+     'another-client': 'https://another-client.gov.uk'
+   }
+   ```
+4. Returns redirect: `302 Location: {clientUrl}/some/path`
+
+**Configuration:**
+
+The stub is pre-configured with:
+```javascript
+{
+  'portal-stub': 'http://localhost:3020'
+}
+```
+
+**Usage:**
+- Only used in **frontend-redirect mode**
+- Automatically started with `docker compose up`
+- Runs on port 3022
+- Accessed via gateway at `/fcp-sfd-doc-upload/*`
+
+**See:** [document-upload-frontend-stub/README.md](document-upload-frontend-stub/README.md) for details.
+
+### 3. NGINX Gateway
+
+**Location:** [nginx/nginx.conf](nginx/nginx.conf)
+
+**Provides:** Reverse proxy for gateway routing and frontend redirect modes
+
+**What it does:**
+
+```nginx
+# Route file uploads to uploader stub
+location /upload-and-scan/ {
+    proxy_pass http://document-upload-stub:3021;
+}
+
+# Route redirect mapping to frontend stub
+location /fcp-sfd-doc-upload/ {
+    proxy_pass http://document-upload-frontend-stub:3022;
+}
+
+# Route everything else to portal
+location / {
+    proxy_pass http://fcp-sfd-portal-stub:3020;
+}
+```
+
+**Usage:**
+- Runs on port 3019
+- Acts as single entry point in gateway-routing mode
+- Handles upload routing in all modes (local dev)
+
+---
+
+## Advanced Configuration
+
+### Environment Variables Reference
+
+All configuration is managed through environment variables. Copy [.env.example](.env.example) to `.env` and customize:
+
 ```bash
+cp .env.example .env
+# Edit with your editor of choice
+```
+
+#### Core Settings
+
+| Variable | Default | Description | Impact |
+|----------|---------|-------------|--------|
+| `UPLOAD_MODE` | `gateway-routing` | Integration pattern to use | Determines how browser uploads are routed and whether JavaScript is required.<br/><br/>**Options:**<br/>• `gateway-routing` - Users access via gateway, uploads via gateway (no JS)<br/>• `frontend-redirect` - Users access portal directly, uploads via gateway (no JS)<br/>• `direct` - Users access portal directly, uploads direct to uploader (requires JS) |
+| `OBJECT_PROCESSOR_HOST` | `http://document-upload-stub:3021` | Object Processor API URL | Points to the service that provides `/api/v1/initiate` and `/api/v1/status` endpoints.<br/><br/>**Change to:** Real Object Processor URL for integration testing (e.g., `http://real-processor:3004`) |
+| `GATEWAY_URL` | `http://localhost:3019` | Gateway domain for uploads | Used in gateway-routing and frontend-redirect modes to override upload URLs.<br/><br/>**Should be:** Your infrastructure gateway domain (nginx, CloudFront, etc.) |
+| `REDIRECT_AFTER_UPLOAD` | `/document-upload/processing` | Path to redirect after upload | Where CDP Uploader redirects the browser after accepting files.<br/><br/>**Note:** In frontend-redirect mode, automatically prefixed with `/fcp-sfd-doc-upload/{client-id}` |
+
+#### Authentication Settings
+
+| Variable | Default | Description | Impact |
+|----------|---------|-------------|--------|
+| `COGNITO_ENABLED` | `false` | Enable AWS Cognito authentication | When `true`, portal obtains OAuth2 tokens and includes them in Object Processor API calls.<br/><br/>**Requires:** `COGNITO_DOMAIN`, `COGNITO_CLIENT_ID`, `COGNITO_CLIENT_SECRET` to be set |
+| `COGNITO_DOMAIN` | (empty) | Cognito domain | AWS Cognito OAuth2 domain.<br/><br/>**Example:** `your-service-c63f2.auth.eu-west-2.amazoncognito.com`<br/>**Required when:** `COGNITO_ENABLED=true` |
+| `COGNITO_CLIENT_ID` | (empty) | Cognito client ID | OAuth2 client ID from Cognito User Pool.<br/><br/>**Required when:** `COGNITO_ENABLED=true` |
+| `COGNITO_CLIENT_SECRET` | (empty) | Cognito client secret | OAuth2 client secret.<br/><br/>**Required when:** `COGNITO_ENABLED=true`<br/>⚠️ **Keep this secure!** Never commit to version control |
+
+#### Security Settings
+
+| Variable | Default | Description | Impact |
+|----------|---------|-------------|--------|
+| `ADDITIONAL_UPLOAD_DOMAINS` | `http://localhost:3019,http://localhost:3021` | Comma-separated list of allowed upload domains | Configures Content Security Policy (CSP) `form-action` and `connect-src` directives.<br/><br/>**Requirements by mode:**<br/>• `gateway-routing`: None needed (same-origin)<br/>• `frontend-redirect`: Must include gateway domain<br/>• `direct`: Must include uploader domain<br/><br/>**Example:** `http://localhost:3019,https://cdp-uploader.example.com` |
+| `SESSION_COOKIE_PASSWORD` | Auto-generated | Cookie encryption key | Used to encrypt session cookies.<br/><br/>**Must be:** At least 32 characters<br/>**Auto-generated** if not provided<br/>⚠️ **Keep secure!** Never commit to version control |
+
+### Switching Modes at Runtime
+
+You can switch between modes without rebuilding containers:
+
+```bash
+# Stop current containers
+docker compose down
+
+# Start with different mode using environment variable
 UPLOAD_MODE=frontend-redirect docker compose up
-# Visit http://localhost:3020
+
+# OR edit .env file and restart
+echo "UPLOAD_MODE=direct" >> .env
+docker compose up
 ```
 
-**Direct mode (fallback)** - only if gateway not possible, requires JavaScript:
+**What changes between modes:**
+
+| Aspect | gateway-routing | frontend-redirect | direct |
+|--------|----------------|-------------------|--------|
+| User entry point | Gateway (3019) | Portal (3020) | Portal (3020) |
+| Upload destination | Gateway → Uploader | Gateway → Uploader | Direct to Uploader |
+| JavaScript required | ❌ No | ❌ No | ✅ Yes |
+| CSP configuration | Simple (`'self'`) | Gateway in `form-action` | Uploader in `form-action` + `connect-src` |
+| Redirect handling | Relative in gateway | Mapped by frontend stub | JavaScript intercept |
+
+### Using Real vs Stub Services
+
+#### Local Development (Default)
 ```bash
-UPLOAD_MODE=direct docker compose up
-# Visit http://localhost:3020
+# Uses all stubs (no external dependencies)
+docker compose up
 ```
 
-All commands start all required services (portal, stub, nginx, document-upload-frontend-stub). The mode only changes how uploads are routed and whether JavaScript is required.
+All services run locally:
+- Document Upload Stub (3021) = Object Processor + CDP Uploader
+- Frontend Stub (3022) = Redirect mapper
+- NGINX (3019) = Gateway
 
-**💡 Tip:** Always use gateway routing or frontend redirect mode for production services requiring progressive enhancement.
+#### Integration Testing with Real Object Processor
+```bash
+# Point to real Object Processor
+OBJECT_PROCESSOR_HOST=http://real-object-processor:3004 \
+COGNITO_ENABLED=true \
+COGNITO_DOMAIN=your-domain.auth.eu-west-2.amazoncognito.com \
+COGNITO_CLIENT_ID=your-client-id \
+COGNITO_CLIENT_SECRET=your-secret \
+docker compose up
+```
 
-## User Journey
+What happens:
+- Portal calls real Object Processor (with Cognito tokens)
+- Real Object Processor provides real CDP Uploader URLs
+- Files upload to real CDP Uploader and S3
+- Real virus scanning with ClamAV
+
+### Content Security Policy (CSP) Configuration
+
+The portal **automatically configures CSP** based on `UPLOAD_MODE`:
+
+#### Gateway Routing Mode
+```
+Content-Security-Policy: 
+  form-action 'self';
+  connect-src 'self';
+```
+
+- ✅ Forms only submit to same origin
+- ✅ JavaScript only connects to same origin
+- ✅ No additional domains needed
+
+#### Frontend Redirect Mode
+```
+Content-Security-Policy: 
+  form-action 'self' http://localhost:3019;
+  connect-src 'self';
+```
+
+- ✅ Forms can submit to gateway domain (cross-origin POST)
+- ✅ JavaScript only connects to same origin
+- ⚠️ Must set `ADDITIONAL_UPLOAD_DOMAINS` to include gateway
+
+#### Direct Mode
+```
+Content-Security-Policy: 
+  form-action 'self' http://localhost:3021;
+  connect-src 'self' http://localhost:3021;
+```
+
+- ✅ Forms can submit to any domain
+- ✅ JavaScript can `fetch()` to uploader domain
+- ⚠️ Must set `ADDITIONAL_UPLOAD_DOMAINS` to include uploader domain
+
+**Implementation:** [src/plugins/content-security-policy.js](src/plugins/content-security-policy.js)
+
+### Port Reference
+
+| Port | Service | Purpose | User Access |
+|------|---------|---------|-------------|
+| **3019** | NGINX Gateway | Reverse proxy routes `/upload-and-scan/` to uploader, `/fcp-sfd-doc-upload/` to frontend stub, everything else to portal | ✅ Yes (gateway-routing mode entry point) |
+| **3020** | Portal Application | Your web application | ✅ Yes (frontend-redirect/direct mode entry point) |
+| 3021 | Document Upload Stub | Mock Object Processor + CDP Uploader APIs | ❌ No (backend service) |
+| 3022 | Frontend Stub | Mock redirect mapper | ❌ No (backend service) |
+
+---
+
+## Implementation Details
+
+This section provides technical details about the portal implementation for developers.
+
+### Tech Stack
+
+- **Node.js 24.12.0+** - LTS version with native ESM support
+- **Hapi.js 21** - Server framework with plugin architecture
+- **Nunjucks** - Templating engine with GOV.UK Frontend components
+- **Webpack** - Bundles client-side JS/SCSS from `src/client/`
+- **Vitest** - Testing framework with `vi` mocking utilities
+- **Neostandard** - ESLint config (ECMAScript 2025)
+- **Convict** - Schema-based configuration management
+- **Pino** - Structured logging in ECS format
+
+### Project Structure
+
+```
+src/
+├── routes/                    # Hapi route handlers
+│   ├── document-upload.js    # 6-step upload flow handlers
+│   ├── index.js              # Home page
+│   └── health.js             # Health check endpoint
+├── plugins/                   # Hapi plugins
+│   ├── router.js             # Auto-registers routes
+│   ├── session.js            # Yar session management
+│   ├── headers.js            # Security headers
+│   └── content-security-policy.js  # CSP configuration
+├── common/helpers/
+│   ├── cognito.js            # OAuth2 token manager
+│   ├── object-processor.js   # API client
+│   └── logging/              # Pino logger setup
+├── config/
+│   ├── config.js             # Convict schema
+│   └── nunjucks/             # Template configuration
+├── views/                     # Nunjucks templates
+│   ├── document-upload/      # Upload flow pages
+│   └── layouts.njk           # Base layout
+└── client/                    # Frontend assets
+    ├── javascript/
+    │   ├── application.js    # Main entry point
+    │   └── document-upload.js  # Direct mode upload handler
+    └── stylesheets/          # SASS/SCSS styles
+
+document-upload-stub/         # Local development stub
+document-upload-frontend-stub/  # Redirect mapper stub
+nginx/                        # Gateway configuration
+```
+
+### Key Files by Pattern
+
+**Gateway Routing:**
+- [nginx/nginx.conf](nginx/nginx.conf) - Gateway routing rules
+- [src/routes/document-upload.js](src/routes/document-upload.js#L51-L67) - Upload URL override
+
+**Frontend Redirect:**
+- [document-upload-frontend-stub/src/routes/redirect.js](document-upload-frontend-stub/src/routes/redirect.js) - Client mapping
+- [src/routes/document-upload.js](src/routes/document-upload.js#L73-L78) - Redirect prefix
+
+**Direct Mode:**
+- [src/client/javascript/document-upload.js](src/client/javascript/document-upload.js) - JavaScript fetch handler
+
+**All Patterns:**
+- [src/common/helpers/object-processor.js](src/common/helpers/object-processor.js) - API client
+- [src/common/helpers/cognito.js](src/common/helpers/cognito.js) - OAuth2 authentication
+- [src/plugins/content-security-policy.js](src/plugins/content-security-policy.js) - CSP config
+
+### User Journey
 
 The portal implements a 6-step user journey following GOV.UK Design System patterns:
 
-1. **Sign In** ([/document-upload/sign-in](http://localhost:3020/document-upload/sign-in))
-   - User enters their 10-digit CRN (Customer Reference Number)
-   - CRN stored in session cookie
+1. **Sign In** (`/document-upload/sign-in`)
+   - User enters 10-digit CRN
+   - Stored in session cookie
 
-2. **Enter Metadata** ([/document-upload/metadata](http://localhost:3020/document-upload/metadata))
-   - **SBI** (Single Business Identifier) - 9 digits
-   - **FRN** (Firm Reference Number) - 10 digits
-   - **Reference** - User's own reference text
-   - **Type** - Document type (e.g., CS_Agreement_Evidence)
-   - **Service** - Source system (fcp-sfd-frontend or rps-portal)
+2. **Enter Metadata** (`/document-upload/metadata`)
+   - SBI (9 digits)
+   - FRN (10 digits)
+   - Reference (user's own text)
+   - Document Type (dropdown)
+   - Service (dropdown)
 
-3. **Upload Files** ([/document-upload/upload](http://localhost:3020/document-upload/upload))
-   - Portal calls Object Processor `/api/v1/initiate` with metadata
-   - Receives `correlationId`, `uploadId`, `uploadUrl`, and `statusUrl` from Object Processor
-   - Browser submits files:
-     - **Gateway routing mode**: Standard form POST to gateway's `/upload-and-scan/{uploadId}` (no JavaScript required)
-     - **Direct mode**: JavaScript `fetch()` to CDP Uploader domain (requires JavaScript)
-   - CDP Uploader responds with 302 redirect on acceptance
+3. **Upload Files** (`/document-upload/upload`)
+   - Portal calls `POST /api/v1/initiate`
+   - Receives upload URL and status URL
+   - Renders form pointing to upload URL
+   - User selects files and submits
 
-4. **Processing** ([/document-upload/processing](http://localhost:3020/document-upload/processing))
-   - Auto-polls Object Processor using `statusUrl` every 3 seconds
-   - Shows scanning progress (IN_PROGRESS → SUCCESSFUL/REJECTED)
-   - CDP Uploader performs virus scan and uploads to S3 in background
+4. **Processing** (`/document-upload/processing`)
+   - Auto-polls `GET /api/v1/status/{correlationId}` every 3 seconds
+   - Shows `IN_PROGRESS` → `SUCCESSFUL`/`REJECTED`
+   - CDP Uploader performs virus scan in background
 
-5. **Success** ([/document-upload/success](http://localhost:3020/document-upload/success))
-   - Displays confirmation with submission ID
-   - Lists uploaded files and metadata
+5. **Success** (`/document-upload/success`)
+   - Displays confirmation
+   - Shows submission ID and uploaded files
 
-6. **Error** ([/document-upload/error](http://localhost:3020/document-upload/error))
-   - Shown if files rejected (e.g., virus detected)
-   - Displays rejection reason and affected files
+6. **Error** (`/document-upload/error`)
+   - Shows rejection reason
+   - Lists affected files
+
+---
 
 ## Testing
 
 ### Unit Tests
 
+Run tests with Vitest:
+
 ```bash
-# Run all tests
+# Run all tests with coverage (in Docker)
 npm run docker:test
 
-# Run tests in watch mode (TDD)
+# Watch mode for TDD
 npm run docker:test:watch
 
-# Run linter
+# Run tests locally (requires Node 24.12.0+)
+npm test
+
+# Generate coverage report
+npm run test:coverage
+```
+
+Tests are located in `test/unit/` mirroring the `src/` structure.
+
+### Linting
+
+```bash
+# Check for issues
 npm run lint
 
-# Fix linting issues
+# Auto-fix issues
 npm run lint:fix
 ```
 
-### Manual Testing in Browser
+Uses Neostandard (ESLint) with ECMAScript 2025 syntax support.
 
-1. Start the portal and stub:
-   - **Gateway routing mode (default)**: `docker compose up`
-   - **Frontend redirect mode**: `UPLOAD_MODE=frontend-redirect docker compose up`
-   - **Direct mode**: `UPLOAD_MODE=direct docker compose up`
+### Manual Testing
 
-2. Navigate to the entry point:
-   - **Gateway routing mode**: [http://localhost:3019/document-upload/sign-in](http://localhost:3019/document-upload/sign-in)
-   - **Frontend redirect mode**: [http://localhost:3020/document-upload/sign-in](http://localhost:3020/document-upload/sign-in)
-   - **Direct mode**: [http://localhost:3020/document-upload/sign-in](http://localhost:3020/document-upload/sign-in)
+Follow the "Try It Yourself" sections for each pattern above.
 
-3. Enter CRN: `1234567890`
-4. Click "Continue"
-5. Fill in metadata:
-   - SBI: `123456789`
-   - FRN: `1234567890`
-   - Reference: `Test Upload`
-   - Type: Select "CS Agreement Evidence"
-   - Service: Select "FCP SFD Frontend"
-6. Click "Continue"
-7. Select a file to upload
-8. Click "Upload documents"
-9. Wait for processing (auto-refreshes every 3 seconds)
-10. View success or error page
+### Testing with Different Modes
 
-## Key Files
+```bash
+# Test gateway-routing mode
+docker compose up
+# Visit http://localhost:3019
+# Disable JavaScript in browser - upload should still work
 
-- [src/routes/document-upload.js](src/routes/document-upload.js) - 6 route handlers for upload journey
-- [src/client/javascript/document-upload.js](src/client/javascript/document-upload.js) - Client-side upload handling (direct mode only)
-- [src/common/helpers/cognito.js](src/common/helpers/cognito.js) - Cognito OAuth2 client with token caching
-- [src/common/helpers/object-processor.js](src/common/helpers/object-processor.js) - Object Processor API client (`initiate`, `status`)
-- [src/config/config.js](src/config/config.js) - Convict configuration schema
-- [.env.example](.env.example) - Environment variable template
-- [nginx/nginx.conf](nginx/nginx.conf) - Gateway routing configuration (gateway routing mode)
+# Test frontend-redirect mode
+UPLOAD_MODE=frontend-redirect docker compose up
+# Visit http://localhost:3020
+# Open Network tab to see redirect chain
+# Disable JavaScript - upload should still work
+
+# Test direct mode
+UPLOAD_MODE=direct docker compose up
+# Visit http://localhost:3020
+# Open Console tab to see fetch() calls
+# Disable JavaScript - upload should fail gracefully
+```
+
+---
 
 ## Related Repositories
 
-- **Object Processor**: [DEFRA/fcp-sfd-object-processor](https://github.com/DEFRA/fcp-sfd-object-processor) - SFD Document Upload API
-- **CDP Uploader**: [DEFRA/cdp-uploader](https://github.com/DEFRA/cdp-uploader) - File upload and virus scanning service
+**SFD Document Upload Service:**
+- **[DEFRA/fcp-sfd-object-processor](https://github.com/DEFRA/fcp-sfd-object-processor)** - Object Processor API (backend service)
+
+**CDP Infrastructure:**
+- **[DEFRA/cdp-uploader](https://github.com/DEFRA/cdp-uploader)** - CDP Uploader service (file upload and virus scanning)
+
+**Local Stubs (in this repo):**
+- **[document-upload-stub/](document-upload-stub/)** - Simulates Object Processor + CDP Uploader
+- **[document-upload-frontend-stub/](document-upload-frontend-stub/)** - Simulates Document Upload Frontend
+
+---
 
 ## Licence
 
