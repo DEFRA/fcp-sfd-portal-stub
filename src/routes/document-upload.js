@@ -60,8 +60,8 @@ export const metadataPost = {
       submissionId,
       uosr,
       submissionDateTime,
-      files: ['document.pdf'],
-      filesInSubmission: 1,
+      files: ['document.pdf'], // TODO: Verify why Object Processor requires file names at this stage, when files are not yet uploaded.
+      filesInSubmission: 1, // TODO: Verify why Object Processor requires total file count at this stage, when files are not yet uploaded.
       type,
       reference,
       service
