@@ -1,4 +1,5 @@
 import { getSessionByUploadId, updateSessionStatus } from './object-processor.js'
+import { UPLOAD_STATUS } from '../common/constants/upload-status.js'
 
 export const uploadPost = {
   method: 'POST',
@@ -27,7 +28,7 @@ export const uploadPost = {
     // Simulate virus scanning delay
     setTimeout(() => {
       request.logger.info({ correlationId: session.correlationId, uploadId }, 'Marking upload as successful')
-      updateSessionStatus(session.correlationId, 'SUCCESSFUL', 'Files uploaded and scanned successfully', 0)
+      updateSessionStatus(session.correlationId, UPLOAD_STATUS.READY, 'Files uploaded and scanned successfully', 0)
     }, 2000)
 
     // Return relative redirect (browser resolves to originating domain)

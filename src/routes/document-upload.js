@@ -1,7 +1,7 @@
-import { format } from 'date-fns'
 import { randomUUID } from 'node:crypto'
 import { config } from '../config/config.js'
 import { initiateUpload, getUploadStatus } from '../common/helpers/object-processor.js'
+import { UPLOAD_STATUS } from '../common/constants/upload-status.js'
 
 export const signInGet = {
   method: 'GET',
@@ -51,7 +51,6 @@ export const metadataPost = {
     // Generate submission details
     const submissionId = randomUUID()
     const uosr = `${sbi}_${submissionId}`
-    const submissionDateTime = format(new Date(), 'dd/MM/yyyy HH:mm:ss')
 
     const metadata = {
       sbi: parseInt(sbi, 10),
@@ -59,9 +58,6 @@ export const metadataPost = {
       frn: parseInt(frn, 10),
       submissionId,
       uosr,
-      submissionDateTime,
-      files: ['document.pdf'], // TODO: Verify why Object Processor requires file names at this stage, when files are not yet uploaded.
-      filesInSubmission: 1, // TODO: Verify why Object Processor requires total file count at this stage, when files are not yet uploaded.
       type,
       reference,
       service
@@ -166,16 +162,10 @@ export const checkStatusGet = {
 
     try {
       const status = await getUploadStatus(statusUrl)
-      request.logger.info({ statusUrl, status: status.uploadStatus }, 'Checked upload status')
+      request.logger.info({ statusUrl, status: status.data.uploadStatus }, 'Checked upload status')
 
-      if (status.status === 'SUCCESSFUL') {
+      if (status.data.uploadStatus === UPLOAD_STATUS.READY) {
         return h.redirect('/document-upload/success')
-      }
-
-      if (status.status === 'REJECTED') {
-        request.yar.set('rejectionReason', status.message)
-        request.yar.set('numberOfRejectedFiles', status.numberOfRejectedFiles)
-        return h.redirect('/document-upload/error')
       }
 
       return h.redirect('/document-upload/processing')
@@ -226,13 +216,7 @@ export const successGet = {
     try {
       const status = await getUploadStatus(statusUrl)
 
-      // Redirect if scan not successful or rejected
-      if (status.status !== 'SUCCESSFUL') {
-        if (status.status === 'REJECTED') {
-          request.yar.set('rejectionReason', status.message)
-          request.yar.set('numberOfRejectedFiles', status.numberOfRejectedFiles)
-          return h.redirect('/document-upload/error')
-        }
+      if (status.data.uploadStatus !== UPLOAD_STATUS.READY) {
         return h.redirect('/document-upload/processing')
       }
 
@@ -240,9 +224,9 @@ export const successGet = {
         pageTitle: 'Upload successful',
         submissionId,
         reference: metadata.reference,
-        uploadStatus: status.status,
-        numberOfFiles: status.numberOfFiles || uploadedFiles.length,
-        uploadedFiles: status.fileNames || uploadedFiles
+        uploadStatus: status.data.uploadStatus,
+        numberOfFiles: status.data.numberOfFiles || uploadedFiles.length,
+        uploadedFiles: status.data.fileNames || uploadedFiles
       })
     } catch (error) {
       request.logger.error({ error }, 'Failed to get upload status')

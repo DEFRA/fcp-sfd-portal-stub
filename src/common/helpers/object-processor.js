@@ -47,10 +47,20 @@ export async function initiateUpload (metadata, redirect) {
     redirect
   }
 
-  return makeRequest('/api/v1/initiate', {
+  const result = await makeRequest('/api/v1/uploader/initiate', {
     method: 'POST',
     body: JSON.stringify(payload)
   })
+
+  const { uploadId, uploadUrl, statusUrl } = result.data
+  const host = config.get('objectProcessor.host')
+
+  return {
+    uploadId,
+    uploadUrl,
+    statusUrl: statusUrl.startsWith('http') ? statusUrl : `${host}${statusUrl}`,
+    correlationId: uploadId
+  }
 }
 
 export async function getUploadStatus (statusUrl) {

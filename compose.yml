@@ -65,8 +65,11 @@ services:
 
   nginx:
     image: nginx:alpine
+    environment:
+      UPLOADER_URL: ${UPLOADER_URL:-http://document-upload-stub:3021}
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
+    command: /bin/sh -c "envsubst '$$UPLOADER_URL' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
     depends_on:
       fcp-sfd-portal-stub:
         condition: service_healthy
