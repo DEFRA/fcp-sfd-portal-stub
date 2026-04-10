@@ -164,8 +164,17 @@ export const checkStatusGet = {
       const status = await getUploadStatus(statusUrl)
       request.logger.info({ statusUrl, status: status.data.uploadStatus }, 'Checked upload status')
 
-      if (status.data.uploadStatus === UPLOAD_STATUS.READY) {
+      if (status.data.uploadStatus === UPLOAD_STATUS.SUCCESS) {
         return h.redirect('/document-upload/success')
+      }
+
+      if (status.data.uploadStatus === UPLOAD_STATUS.FAILURE) {
+        const form = status.data.form || {}
+        const rejectedFiles = Object.entries(form)
+          .filter(([, fileData]) => fileData.hasError)
+          .map(([fileName, fileData]) => ({ fileName, errorMessage: fileData.errorMessage }))
+        request.yar.set('rejectedFiles', rejectedFiles)
+        return h.redirect('/document-upload/error')
       }
 
       return h.redirect('/document-upload/processing')
@@ -183,7 +192,7 @@ export const errorGet = {
     const submissionId = request.yar.get('submissionId')
     const metadata = request.yar.get('metadata')
     const uploadedFiles = request.yar.get('uploadedFiles') || []
-    const numberOfRejectedFiles = request.yar.get('numberOfRejectedFiles') || uploadedFiles.length
+    const rejectedFiles = request.yar.get('rejectedFiles') || []
 
     if (!submissionId || !metadata) {
       return h.redirect('/document-upload/sign-in')
@@ -194,8 +203,8 @@ export const errorGet = {
       submissionId,
       reference: metadata.reference,
       numberOfFiles: uploadedFiles.length,
-      numberOfRejectedFiles,
-      uploadedFiles
+      uploadedFiles,
+      rejectedFiles
     })
   }
 }
@@ -216,17 +225,19 @@ export const successGet = {
     try {
       const status = await getUploadStatus(statusUrl)
 
-      if (status.data.uploadStatus !== UPLOAD_STATUS.READY) {
+      if (status.data.uploadStatus !== UPLOAD_STATUS.SUCCESS) {
         return h.redirect('/document-upload/processing')
       }
+
+      const fileNames = Object.keys(status.data.form || {})
 
       return h.view('document-upload/success', {
         pageTitle: 'Upload successful',
         submissionId,
         reference: metadata.reference,
         uploadStatus: status.data.uploadStatus,
-        numberOfFiles: status.data.numberOfFiles || uploadedFiles.length,
-        uploadedFiles: status.data.fileNames || uploadedFiles
+        numberOfFiles: fileNames.length || uploadedFiles.length,
+        uploadedFiles: fileNames.length ? fileNames : uploadedFiles
       })
     } catch (error) {
       request.logger.error({ error }, 'Failed to get upload status')

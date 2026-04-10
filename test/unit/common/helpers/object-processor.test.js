@@ -123,10 +123,11 @@ describe('object-processor helper', () => {
     it('returns the full response from the status URL', async () => {
       const statusResponse = {
         data: {
-          uploadStatus: UPLOAD_STATUS.READY,
+          uploadStatus: UPLOAD_STATUS.SUCCESS,
           metadata: { sbi: 123 },
-          numberOfFiles: 1,
-          fileNames: ['doc.pdf']
+          form: {
+            'doc.pdf': { fileStatus: 'accepted', hasError: false }
+          }
         }
       }
 
@@ -138,18 +139,7 @@ describe('object-processor helper', () => {
       const result = await getUploadStatus('http://object-processor:3021/api/v1/uploader/status/upload-123')
 
       expect(result).toEqual(statusResponse)
-      expect(result.data.uploadStatus).toBe(UPLOAD_STATUS.READY)
-    })
-
-    it('returns initiated status when upload is newly created', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ data: { uploadStatus: UPLOAD_STATUS.INITIATED } })
-      })
-
-      const result = await getUploadStatus('http://object-processor:3021/api/v1/uploader/status/upload-123')
-
-      expect(result.data.uploadStatus).toBe(UPLOAD_STATUS.INITIATED)
+      expect(result.data.uploadStatus).toBe(UPLOAD_STATUS.SUCCESS)
     })
 
     it('returns pending status when upload is being scanned', async () => {
@@ -161,6 +151,29 @@ describe('object-processor helper', () => {
       const result = await getUploadStatus('http://object-processor:3021/api/v1/uploader/status/upload-123')
 
       expect(result.data.uploadStatus).toBe(UPLOAD_STATUS.PENDING)
+    })
+
+    it('returns failure status with form error details when upload is rejected', async () => {
+      const statusResponse = {
+        data: {
+          uploadStatus: UPLOAD_STATUS.FAILURE,
+          metadata: { sbi: 123 },
+          form: {
+            'virus.pdf': { fileStatus: 'rejected', hasError: true, errorMessage: 'Virus detected' }
+          }
+        }
+      }
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => statusResponse
+      })
+
+      const result = await getUploadStatus('http://object-processor:3021/api/v1/uploader/status/upload-123')
+
+      expect(result.data.uploadStatus).toBe(UPLOAD_STATUS.FAILURE)
+      expect(result.data.form['virus.pdf'].hasError).toBe(true)
+      expect(result.data.form['virus.pdf'].errorMessage).toBe('Virus detected')
     })
 
     it('throws when status check responds with an error', async () => {

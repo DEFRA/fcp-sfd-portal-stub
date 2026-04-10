@@ -14,8 +14,8 @@
       </h2>
       <div class="govuk-error-summary__body">
         <p class="govuk-body">
-          {% if numberOfRejectedFiles > 0 %}
-            {{ numberOfRejectedFiles }} file{% if numberOfRejectedFiles != 1 %}s were{% else %} was{% endif %} rejected.
+          {% if rejectedFiles and rejectedFiles.length > 0 %}
+            {{ rejectedFiles.length }} file{% if rejectedFiles.length != 1 %}s were{% else %} was{% endif %} rejected.
           {% else %}
             Your files could not be uploaded.
           {% endif %}
@@ -77,23 +77,20 @@
               </strong>
             </dd>
           </div>
-          <div class="govuk-summary-list__row">
-            <dt class="govuk-summary-list__key">
-              Files rejected
-            </dt>
-            <dd class="govuk-summary-list__value">
-              {{ numberOfRejectedFiles }}
-            </dd>
-          </div>
-          {% if uploadedFiles and uploadedFiles.length > 0 %}
+          {% if rejectedFiles and rejectedFiles.length > 0 %}
           <div class="govuk-summary-list__row">
             <dt class="govuk-summary-list__key">
               Rejected files
             </dt>
             <dd class="govuk-summary-list__value">
               <ul class="govuk-list govuk-list--bullet">
-                {% for filename in uploadedFiles %}
-                <li>{{ filename }}</li>
+                {% for file in rejectedFiles %}
+                <li>
+                  {{ file.fileName }}
+                  {% if file.errorMessage %}
+                    &mdash; {{ file.errorMessage }}
+                  {% endif %}
+                </li>
                 {% endfor %}
               </ul>
             </dd>

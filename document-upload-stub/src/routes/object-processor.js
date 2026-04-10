@@ -58,24 +58,19 @@ export const statusGet = {
 
     return h.response({
       data: {
-        correlationId: session.correlationId,
-        uploadStatus: session.status,
         metadata: session.metadata,
-        message: session.message,
-        numberOfRejectedFiles: session.numberOfRejectedFiles,
-        numberOfFiles: session.numberOfFiles || 0,
-        fileNames: session.fileNames || []
+        form: session.form || {},
+        uploadStatus: session.status
       }
     }).code(200)
   }
 }
 
-export function updateSessionStatus (correlationId, status, message, numberOfRejectedFiles) {
+export function updateSessionStatus (correlationId, status, form) {
   const session = uploadSessions.get(correlationId)
   if (session) {
     session.status = status
-    session.message = message
-    session.numberOfRejectedFiles = numberOfRejectedFiles
+    session.form = form || {}
     uploadSessions.set(correlationId, session)
   }
 }
