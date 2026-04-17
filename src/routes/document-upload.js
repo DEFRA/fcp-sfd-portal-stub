@@ -1,7 +1,7 @@
-import { format } from 'date-fns'
 import { randomUUID } from 'node:crypto'
 import { config } from '../config/config.js'
 import { initiateUpload, getUploadStatus } from '../common/helpers/object-processor.js'
+import { UPLOAD_STATUS } from '../common/constants/upload-status.js'
 
 export const signInGet = {
   method: 'GET',
@@ -51,7 +51,6 @@ export const metadataPost = {
     // Generate submission details
     const submissionId = randomUUID()
     const uosr = `${sbi}_${submissionId}`
-    const submissionDateTime = format(new Date(), 'dd/MM/yyyy HH:mm:ss')
 
     const metadata = {
       sbi: parseInt(sbi, 10),
@@ -59,9 +58,6 @@ export const metadataPost = {
       frn: parseInt(frn, 10),
       submissionId,
       uosr,
-      submissionDateTime,
-      files: ['document.pdf'], // TODO: Verify why Object Processor requires file names at this stage, when files are not yet uploaded.
-      filesInSubmission: 1, // TODO: Verify why Object Processor requires total file count at this stage, when files are not yet uploaded.
       type,
       reference,
       service
@@ -166,15 +162,18 @@ export const checkStatusGet = {
 
     try {
       const status = await getUploadStatus(statusUrl)
-      request.logger.info({ statusUrl, status: status.uploadStatus }, 'Checked upload status')
+      request.logger.info({ statusUrl, status: status.data.uploadStatus }, 'Checked upload status')
 
-      if (status.status === 'SUCCESSFUL') {
+      if (status.data.uploadStatus === UPLOAD_STATUS.SUCCESS) {
         return h.redirect('/document-upload/success')
       }
 
-      if (status.status === 'REJECTED') {
-        request.yar.set('rejectionReason', status.message)
-        request.yar.set('numberOfRejectedFiles', status.numberOfRejectedFiles)
+      if (status.data.uploadStatus === UPLOAD_STATUS.FAILURE) {
+        const form = status.data.form || {}
+        const rejectedFiles = Object.entries(form)
+          .filter(([, fileData]) => fileData.hasError)
+          .map(([fileName, fileData]) => ({ fileName, errorMessage: fileData.errorMessage }))
+        request.yar.set('rejectedFiles', rejectedFiles)
         return h.redirect('/document-upload/error')
       }
 
@@ -193,7 +192,7 @@ export const errorGet = {
     const submissionId = request.yar.get('submissionId')
     const metadata = request.yar.get('metadata')
     const uploadedFiles = request.yar.get('uploadedFiles') || []
-    const numberOfRejectedFiles = request.yar.get('numberOfRejectedFiles') || uploadedFiles.length
+    const rejectedFiles = request.yar.get('rejectedFiles') || []
 
     if (!submissionId || !metadata) {
       return h.redirect('/document-upload/sign-in')
@@ -204,8 +203,8 @@ export const errorGet = {
       submissionId,
       reference: metadata.reference,
       numberOfFiles: uploadedFiles.length,
-      numberOfRejectedFiles,
-      uploadedFiles
+      uploadedFiles,
+      rejectedFiles
     })
   }
 }
@@ -226,23 +225,19 @@ export const successGet = {
     try {
       const status = await getUploadStatus(statusUrl)
 
-      // Redirect if scan not successful or rejected
-      if (status.status !== 'SUCCESSFUL') {
-        if (status.status === 'REJECTED') {
-          request.yar.set('rejectionReason', status.message)
-          request.yar.set('numberOfRejectedFiles', status.numberOfRejectedFiles)
-          return h.redirect('/document-upload/error')
-        }
+      if (status.data.uploadStatus !== UPLOAD_STATUS.SUCCESS) {
         return h.redirect('/document-upload/processing')
       }
+
+      const fileNames = Object.keys(status.data.form || {})
 
       return h.view('document-upload/success', {
         pageTitle: 'Upload successful',
         submissionId,
         reference: metadata.reference,
-        uploadStatus: status.status,
-        numberOfFiles: status.numberOfFiles || uploadedFiles.length,
-        uploadedFiles: status.fileNames || uploadedFiles
+        uploadStatus: status.data.uploadStatus,
+        numberOfFiles: fileNames.length || uploadedFiles.length,
+        uploadedFiles: fileNames.length ? fileNames : uploadedFiles
       })
     } catch (error) {
       request.logger.error({ error }, 'Failed to get upload status')

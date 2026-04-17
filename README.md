@@ -238,6 +238,7 @@ docker compose up
 UPLOAD_MODE=gateway-routing
 GATEWAY_URL=http://localhost:3019
 REDIRECT_AFTER_UPLOAD=/document-upload/processing
+UPLOADER_URL=http://document-upload-stub:3021
 ```
 
 **Key implementation files:**
@@ -692,6 +693,7 @@ cp .env.example .env
 | `OBJECT_PROCESSOR_HOST` | `http://document-upload-stub:3021` | Object Processor API URL | Points to the service that provides `/api/v1/initiate` and `/api/v1/status` endpoints.<br/><br/>**Change to:** Real Object Processor URL for integration testing (e.g., `http://real-processor:3004`) |
 | `GATEWAY_URL` | `http://localhost:3019` | Gateway domain for uploads | Used in gateway-routing and frontend-redirect modes to override upload URLs.<br/><br/>**Should be:** Your infrastructure gateway domain (nginx, CloudFront, etc.) |
 | `REDIRECT_AFTER_UPLOAD` | `/document-upload/processing` | Path to redirect after upload | Where CDP Uploader redirects the browser after accepting files.<br/><br/>**Note:** In frontend-redirect mode, automatically prefixed with `/fcp-sfd-doc-upload/{client-id}` |
+| `UPLOADER_URL` | `http://document-upload-stub:3021` | CDP Uploader URL for nginx proxy | The URL nginx uses to proxy `/upload-and-scan/*` requests to the CDP Uploader. Only relevant in gateway-routing and frontend-redirect modes (nginx is not used in direct mode).<br/><br/>**Local stub (default):** `http://document-upload-stub:3021`<br/>**CDP Docker network:** `http://cdp-uploader:7337`<br/>**CDP ext-test:** `https://cdp-uploader.ext-test.cdp-int.defra.cloud` |
 
 #### Authentication Settings
 
@@ -764,6 +766,42 @@ What happens:
 - Real Object Processor provides real CDP Uploader URLs
 - Files upload to real CDP Uploader and S3
 - Real virus scanning with ClamAV
+
+#### Connecting to CDP ext-test
+
+To test this stub against the CDP ext-test environment, update two environment variables to point at the real ext-test services:
+
+```bash
+# Point to real Object Processor in CDP ext-test
+OBJECT_PROCESSOR_HOST=https://fcp-sfd-object-processor.api.ext-test.cdp.defra.gov.uk
+
+# Point nginx proxy to real CDP Uploader in CDP ext-test
+UPLOADER_URL=https://cdp-uploader.ext-test.cdp-int.defra.cloud
+
+# Cognito authentication is required when calling the real Object Processor
+COGNITO_ENABLED=true
+COGNITO_DOMAIN=<your-cognito-domain>.auth.eu-west-2.amazoncognito.com
+COGNITO_CLIENT_ID=<your-client-id>
+COGNITO_CLIENT_SECRET=<your-client-secret>
+```
+
+Add these to your `.env` file and start normally:
+
+```bash
+docker compose up
+# Visit http://localhost:3019 (gateway-routing mode)
+```
+
+**What changes:**
+- Portal calls real Object Processor at ext-test (authenticated with Cognito tokens)
+- nginx proxies `/upload-and-scan/*` to the real CDP Uploader at ext-test
+- Files are uploaded to and virus-scanned in the ext-test environment
+
+**What stays the same:**
+- Local nginx gateway still runs on port 3019 (`GATEWAY_URL` remains `http://localhost:3019`)
+- Browser connects via localhost — no changes to CSP or `ADDITIONAL_UPLOAD_DOMAINS` needed
+
+> ⚠️ Never commit Cognito credentials to version control. Store them only in `.env` (which is git-ignored).
 
 ### Content Security Policy (CSP) Configuration
 

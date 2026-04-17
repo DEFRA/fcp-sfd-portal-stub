@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { config } from '../config/config.js'
+import { UPLOAD_STATUS } from '../common/constants/upload-status.js'
 
 // In-memory storage for upload sessions
 const uploadSessions = new Map()
 
 export const initiatePost = {
   method: 'POST',
-  path: '/api/v1/initiate',
+  path: '/api/v1/uploader/initiate',
   handler: (request, h) => {
     const { metadata, redirect } = request.payload
 
@@ -22,17 +23,19 @@ export const initiatePost = {
       uploadId,
       metadata,
       redirect: redirect || '/relative-redirect',
-      status: 'IN_PROGRESS',
+      status: UPLOAD_STATUS.INITIATED,
       createdAt: new Date().toISOString()
     })
 
     request.logger.info({ correlationId, uploadId }, 'Upload initiated')
 
     return h.response({
-      correlationId,
-      uploadId,
-      uploadUrl,
-      statusUrl
+      data: {
+        correlationId,
+        uploadId,
+        uploadUrl,
+        statusUrl
+      }
     }).code(200)
   }
 }
@@ -54,23 +57,20 @@ export const statusGet = {
     request.logger.info({ correlationId, status: session.status }, 'Status checked')
 
     return h.response({
-      correlationId: session.correlationId,
-      status: session.status,
-      metadata: session.metadata,
-      message: session.message,
-      numberOfRejectedFiles: session.numberOfRejectedFiles,
-      numberOfFiles: session.numberOfFiles || 0,
-      fileNames: session.fileNames || []
+      data: {
+        metadata: session.metadata,
+        form: session.form || {},
+        uploadStatus: session.status
+      }
     }).code(200)
   }
 }
 
-export function updateSessionStatus (correlationId, status, message, numberOfRejectedFiles) {
+export function updateSessionStatus (correlationId, status, form) {
   const session = uploadSessions.get(correlationId)
   if (session) {
     session.status = status
-    session.message = message
-    session.numberOfRejectedFiles = numberOfRejectedFiles
+    session.form = form || {}
     uploadSessions.set(correlationId, session)
   }
 }
