@@ -63,7 +63,7 @@
     "autoprefixer": "10.4.21",
     "clean-webpack-plugin": "4.0.0",
     "copy-webpack-plugin": "13.0.0",
-    "eslint": "9.29.0",
+    "eslint": "10.3.0",
     "husky": "9.1.7",
     "jsdom": "26.1.0",
     "neostandard": "0.12.1",
