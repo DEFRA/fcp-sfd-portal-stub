@@ -66,7 +66,7 @@
     "eslint": "9.29.0",
     "husky": "9.1.7",
     "jsdom": "26.1.0",
-    "neostandard": "0.12.1",
+    "neostandard": "0.13.0",
     "nodemon": "3.1.10",
     "postcss-load-config": "6.0.1",
     "postcss-loader": "8.1.1",
