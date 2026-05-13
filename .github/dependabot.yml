@@ -1,22 +1,102 @@
+---
 version: 2
-
 updates:
-  - package-ecosystem: "docker-compose"
-    directory: "/"
-    schedule:
-      interval: "daily"
-    commit-message:
-      prefix: "chore"
-    open-pull-requests-limit: 5
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "daily"
-    commit-message:
-      prefix: "chore"
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    commit-message:
-      prefix: "chore"
+- package-ecosystem: docker-compose
+  directory: "/"
+  schedule:
+    interval: daily
+  commit-message:
+    prefix: chore
+  open-pull-requests-limit: 5
+  groups:
+    docker-security:
+      applies-to: security-updates
+      patterns:
+      - "*"
+    docker-non-security:
+      applies-to: version-updates
+      patterns:
+      - "*"
+- package-ecosystem: npm
+  directory: "/"
+  schedule:
+    interval: daily
+  commit-message:
+    prefix: chore
+  groups:
+    npm-security:
+      applies-to: security-updates
+      patterns:
+      - "*"
+    hapi:
+      applies-to: version-updates
+      patterns:
+      - "@hapi/*"
+      - "hapi-*"
+      - "@defra/hapi-tracing"
+      - "blankie"
+    logging:
+      applies-to: version-updates
+      patterns:
+      - "pino"
+      - "pino-*"
+      - "hapi-pino"
+      - "@elastic/ecs-pino-format"
+    build:
+      applies-to: version-updates
+      patterns:
+      - "webpack"
+      - "webpack-*"
+      - "terser-webpack-plugin"
+      - "copy-webpack-plugin"
+      - "clean-webpack-plugin"
+    css:
+      applies-to: version-updates
+      patterns:
+      - "autoprefixer"
+      - "postcss-*"
+      - "sass"
+      - "sass-loader"
+      - "source-map-loader"
+      - "cssnano"
+      - "cssnano-preset-default"
+    lint:
+      applies-to: version-updates
+      patterns:
+      - "eslint"
+      - "neostandard"
+      - "stylelint"
+      - "stylelint-*"
+    tools:
+      applies-to: version-updates
+      patterns:
+      - "vitest"
+      - "@vitest/*"
+      - "jsdom"
+      - "nodemon"
+      - "husky"
+    npm-production:
+      applies-to: version-updates
+      dependency-type: production
+      patterns:
+      - "*"
+    npm-development:
+      applies-to: version-updates
+      dependency-type: development
+      patterns:
+      - "*"
+- package-ecosystem: github-actions
+  directory: "/"
+  schedule:
+    interval: weekly
+  commit-message:
+    prefix: chore
+  groups:
+    github-actions-security:
+      applies-to: security-updates
+      patterns:
+      - "*"
+    github-actions-non-security:
+      applies-to: version-updates
+      patterns:
+      - "*"
