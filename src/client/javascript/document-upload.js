@@ -32,21 +32,29 @@ export function initDocumentUpload () {
       const response = await fetch(uploadUrl, {
         method: 'POST',
         body: formData,
-        redirect: 'manual'
+        redirect: uploadMode === 'direct' ? 'manual' : 'follow'
       })
 
-      // CDP Uploader may respond with 302 redirect when upload is accepted
-      if (response.type === 'opaqueredirect' || response.status === 302 || response.status === 0) {
-        // Upload accepted; scanning in progress
-        globalThis.location.href = '/document-upload/processing'
-      } else if (response.ok) {
-        // Successful response without redirect
-        const body = await response.json()
-        console.log('Upload response', body)
-        globalThis.location.href = '/document-upload/processing'
+      if (uploadMode === 'direct') {
+        // In direct mode, CDP Uploader responds with 302 redirect
+        if (response.type === 'opaqueredirect' || response.status === 302 || response.status === 0) {
+          globalThis.location.href = '/document-upload/processing'
+        } else if (response.ok) {
+          globalThis.location.href = '/document-upload/processing'
+        } else {
+          const text = await response.text()
+          console.error('Upload failed', response.status, text)
+        }
       } else {
-        const text = await response.text()
-        console.error('Upload failed', response.status, text)
+        // In gateway-routing/frontend-redirect modes, follow the redirect
+        if (response.redirected) {
+          globalThis.location.href = response.url
+        } else if (response.ok) {
+          globalThis.location.href = '/document-upload/processing'
+        } else {
+          const text = await response.text()
+          console.error('Upload failed', response.status, text)
+        }
       }
     } catch (error) {
       console.error('Network or CORS error', error)
