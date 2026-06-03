@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { config } from '../config/config.js'
 import { initiateUpload, getUploadStatus } from '../common/helpers/object-processor.js'
+import { HttpError } from '../common/helpers/http-error.js'
 import { UPLOAD_STATUS } from '../common/constants/upload-status.js'
 
 export const signInGet = {
@@ -180,6 +181,16 @@ export const checkStatusGet = {
       return h.redirect('/document-upload/processing')
     } catch (error) {
       request.logger.error({ error }, 'Failed to check upload status')
+
+      if (error instanceof HttpError && error.statusCode >= 400 && error.statusCode < 500) {
+        return h.redirect('/document-upload/error')
+      }
+
+      if (error instanceof HttpError && error.statusCode >= 500) {
+        request.yar.set('rejectedFiles', [])
+        return h.redirect('/document-upload/error')
+      }
+
       return h.redirect('/document-upload/processing')
     }
   }

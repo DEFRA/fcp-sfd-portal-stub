@@ -1,6 +1,7 @@
 import { config } from '../../config/config.js'
 import { getAccessToken } from './cognito.js'
 import { createLogger } from './logging/logger.js'
+import { HttpError } from './http-error.js'
 
 const logger = createLogger()
 
@@ -30,7 +31,7 @@ async function makeRequest (path, options = {}) {
   if (!response.ok) {
     const errorText = await response.text()
     logger.error({ status: response.status, url, error: errorText }, 'Object processor API request failed')
-    throw new Error(`Object processor API error: ${response.status} ${errorText}`)
+    throw new HttpError(response.status, `Object processor API error: ${response.status} ${errorText}`)
   }
 
   const data = await response.json()
@@ -84,7 +85,7 @@ export async function getUploadStatus (statusUrl) {
   if (!response.ok) {
     const errorText = await response.text()
     logger.error({ status: response.status, statusUrl, error: errorText }, 'Object processor status check failed')
-    throw new Error(`Object processor status check error: ${response.status} ${errorText}`)
+    throw new HttpError(response.status, `Object processor status check error: ${response.status} ${errorText}`)
   }
 
   const data = await response.json()
