@@ -11,7 +11,7 @@ const formAction = ['self']
 
 // Gateway-routing mode uses only 'self' - NGINX handles all routing
 if (uploadMode !== 'gateway-routing') {
-  const cdpDomains = ['https://*.cdp-int.defra.cloud']
+  const cdpDomains = ['https://*.cdp-int.defra.cloud', 'https://*.cdp.defra.gov.uk']
   const additionalDomains = config.get('additionalUploadDomains')
   const parsedAdditionalDomains = additionalDomains
     ? additionalDomains.split(',').map(d => d.trim()).filter(d => d.length > 0)
