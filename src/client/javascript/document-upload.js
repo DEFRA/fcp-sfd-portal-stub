@@ -5,6 +5,18 @@ export function initDocumentUpload () {
     return
   }
 
+  // Keep the filesInSubmission count in sync with the number of files the user has
+  // selected, so multi-file submissions are reported accurately to the uploader.
+  // This applies regardless of upload mode, as the field is submitted as part of the form.
+  const fileInput = document.getElementById('file-upload')
+  const filesInSubmissionInput = document.getElementById('files-in-submission')
+
+  if (fileInput && filesInSubmissionInput) {
+    fileInput.addEventListener('change', () => {
+      filesInSubmissionInput.value = fileInput.files.length
+    })
+  }
+
   // Only intercept form submission in 'direct' mode
   // In 'gateway-routing' mode, standard form POST works
   const uploadMode = uploadForm.getAttribute('data-upload-mode')
