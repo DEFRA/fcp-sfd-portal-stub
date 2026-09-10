@@ -134,6 +134,7 @@ export const processingGet = {
     const submissionId = request.yar.get('submissionId')
     const metadata = request.yar.get('metadata')
     const uploadedFiles = request.yar.get('uploadedFiles') || []
+    const stage = request.yar.get('stage') || 'pending'
 
     if (!submissionId || !metadata) {
       return h.redirect('/document-upload/sign-in')
@@ -145,7 +146,7 @@ export const processingGet = {
       reference: metadata.reference,
       numberOfFiles: uploadedFiles.length,
       uploadedFiles,
-      uploadStatus: 'scanning'
+      uploadStatus: stage
     })
   }
 }
@@ -163,7 +164,9 @@ export const checkStatusGet = {
 
     try {
       const status = await getUploadStatus(statusUrl)
-      request.logger.info({ statusUrl, status: status.data.uploadStatus }, 'Checked upload status')
+      request.logger.info({ statusUrl, status: status.data.uploadStatus, stage: status.data.stage }, 'Checked upload status')
+
+      request.yar.set('stage', status.data.stage)
 
       if (status.data.uploadStatus === UPLOAD_STATUS.SUCCESS) {
         return h.redirect('/document-upload/success')

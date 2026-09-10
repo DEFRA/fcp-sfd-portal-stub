@@ -24,6 +24,7 @@ export const initiatePost = {
       metadata,
       redirect: redirect || '/relative-redirect',
       status: UPLOAD_STATUS.INITIATED,
+      stage: 'pending',
       createdAt: new Date().toISOString()
     })
 
@@ -60,13 +61,14 @@ export const statusGet = {
       data: {
         metadata: session.metadata,
         form: session.form || {},
-        uploadStatus: session.status
+        uploadStatus: session.status,
+        stage: session.stage
       }
     }).code(200)
   }
 }
 
-export function updateSessionStatus (correlationId, status, form) {
+export function updateSessionStatus(correlationId, status, form) {
   const session = uploadSessions.get(correlationId)
   if (session) {
     session.status = status
@@ -75,7 +77,15 @@ export function updateSessionStatus (correlationId, status, form) {
   }
 }
 
-export function getSessionByUploadId (uploadId) {
+export function updateSessionStage(correlationId, stage) {
+  const session = uploadSessions.get(correlationId)
+  if (session) {
+    session.stage = stage
+    uploadSessions.set(correlationId, session)
+  }
+}
+
+export function getSessionByUploadId(uploadId) {
   for (const [, session] of uploadSessions) {
     if (session.uploadId === uploadId) {
       return session

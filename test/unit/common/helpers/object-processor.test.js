@@ -32,6 +32,7 @@ describe('object-processor helper', () => {
 
   describe('initiateUpload', () => {
     it('posts metadata and redirect to the initiate endpoint', async () => {
+      const correlationId = 'correlation-456'
       const uploadId = 'upload-123'
       const uploadUrl = 'http://cdp-uploader:7337/upload-and-scan/upload-123'
       const statusUrl = '/api/v1/uploader/status/upload-123'
@@ -39,7 +40,7 @@ describe('object-processor helper', () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({
-          data: { uploadId, uploadUrl, statusUrl }
+          data: { correlationId, uploadId, uploadUrl, statusUrl }
         })
       })
 
@@ -52,7 +53,7 @@ describe('object-processor helper', () => {
       )
       expect(result.uploadId).toBe(uploadId)
       expect(result.uploadUrl).toBe(uploadUrl)
-      expect(result.correlationId).toBe(uploadId)
+      expect(result.correlationId).toBe(correlationId)
     })
 
     it('prepends host to relative statusUrl', async () => {

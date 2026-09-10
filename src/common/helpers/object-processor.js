@@ -5,7 +5,7 @@ import { HttpError } from './http-error.js'
 
 const logger = createLogger()
 
-async function makeRequest (path, options = {}) {
+async function makeRequest(path, options = {}) {
   const host = config.get('objectProcessor.host')
   const token = await getAccessToken()
 
@@ -40,7 +40,7 @@ async function makeRequest (path, options = {}) {
   return data
 }
 
-export async function initiateUpload (metadata, redirect) {
+export async function initiateUpload(metadata, redirect) {
   logger.info({ submissionId: metadata.submissionId }, 'Initiating upload with object processor')
 
   const payload = {
@@ -53,18 +53,18 @@ export async function initiateUpload (metadata, redirect) {
     body: JSON.stringify(payload)
   })
 
-  const { uploadId, uploadUrl, statusUrl } = result.data
+  const { correlationId, uploadId, uploadUrl, statusUrl } = result.data
   const host = config.get('objectProcessor.host')
 
   return {
     uploadId,
     uploadUrl,
     statusUrl: statusUrl.startsWith('http') ? statusUrl : `${host}${statusUrl}`,
-    correlationId: uploadId
+    correlationId
   }
 }
 
-export async function getUploadStatus (statusUrl) {
+export async function getUploadStatus(statusUrl) {
   logger.info({ statusUrl }, 'Checking upload status with object processor')
 
   const token = await getAccessToken()
@@ -94,7 +94,7 @@ export async function getUploadStatus (statusUrl) {
   return data
 }
 
-export async function getMetadataBySbi (sbi) {
+export async function getMetadataBySbi(sbi) {
   logger.info({ sbi }, 'Getting metadata by SBI from object processor')
 
   return makeRequest(`/api/v1/metadata/sbi/${sbi}`, {

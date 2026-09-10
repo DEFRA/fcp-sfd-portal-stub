@@ -1,9 +1,9 @@
-import { getSessionByUploadId, updateSessionStatus } from './object-processor.js'
+import { getSessionByUploadId, updateSessionStatus, updateSessionStage } from './object-processor.js'
 import { UPLOAD_STATUS } from '../common/constants/upload-status.js'
 
 // Builds the CDP Uploader-style form object from the uploaded file parts,
 // keyed by file name, so multi-file submissions are reported back accurately.
-function buildFormFromPayload (payload) {
+function buildFormFromPayload(payload) {
   const fileField = payload?.['file-upload']
   const files = Array.isArray(fileField) ? fileField : [fileField].filter(Boolean)
 
@@ -44,9 +44,11 @@ export const uploadPost = {
     }
 
     // Simulate virus scanning delay
+    updateSessionStage(session.correlationId, 'scanning')
     setTimeout(() => {
       request.logger.info({ correlationId: session.correlationId, uploadId }, 'Marking upload as successful')
       updateSessionStatus(session.correlationId, UPLOAD_STATUS.SUCCESS, form)
+      updateSessionStage(session.correlationId, 'complete')
     }, 2000)
 
     // Return relative redirect (browser resolves to originating domain)
