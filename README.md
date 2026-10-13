@@ -79,8 +79,8 @@ The SFD Document Upload solution consists of three main components that work tog
 - **Provided by SFD team** - The central API for document uploads
 - **Responsibilities:**
   - Validate OAuth2 JWT tokens (when authentication enabled)
-  - Provide `/api/v1/initiate` endpoint to create upload sessions
-  - Provide `/api/v1/status/{correlationId}` endpoint to query upload status
+  - Provide `/api/v1/uploader/initiate` endpoint to create upload sessions
+  - Provide `/api/v1/uploader/status/{uploadId}` endpoint to query upload status
   - Receive callbacks from CDP Uploader when files are scanned
   - Persist metadata to MongoDB
   - Publish events to AWS SNS for downstream processing
@@ -155,7 +155,7 @@ sequenceDiagram
 
     Browser->>Gateway: POST /metadata (user data)
     Gateway->>Portal: Route to portal
-    Portal->>Processor: POST /api/v1/initiate<br/>(metadata + redirect path)
+    Portal->>Processor: POST /api/v1/uploader/initiate<br/>(metadata + redirect path)
     Processor-->>Portal: {uploadId, uploadUrl, statusUrl}
     Note over Portal: Override uploadUrl domain<br/>to use gateway URL
     Portal-->>Gateway: Render upload form HTML
@@ -169,7 +169,7 @@ sequenceDiagram
     
     Browser->>Gateway: GET /processing
     Gateway->>Portal: Route to portal
-    Portal->>Processor: GET /api/v1/status/{id}
+    Portal->>Processor: GET /api/v1/uploader/status/{uploadId}
     Processor-->>Portal: Status update
     Portal-->>Gateway: Display status page
     Gateway-->>Browser: Show processing/success
@@ -281,7 +281,7 @@ sequenceDiagram
     participant S3 as AWS S3
 
     Browser->>Portal: POST /metadata (user data)
-    Portal->>Processor: POST /api/v1/initiate<br/>(redirect: "/fcp-sfd-doc-upload/YOUR-ID/processing")
+    Portal->>Processor: POST /api/v1/uploader/initiate<br/>(redirect: "/fcp-sfd-doc-upload/YOUR-ID/processing")
     Note over Portal: Portal prepends mapper prefix<br/>to redirect path
     Processor-->>Portal: {uploadId, uploadUrl, statusUrl}
     Note over Portal: Override uploadUrl<br/>to use gateway domain
@@ -298,7 +298,7 @@ sequenceDiagram
     Gateway-->>Browser: Follow redirect
     
     Browser->>Portal: GET /processing
-    Portal->>Processor: GET /api/v1/status/{id}
+    Portal->>Processor: GET /api/v1/uploader/status/{uploadId}
     Processor-->>Portal: Status update
     Portal-->>Browser: Show processing/success
 ```
@@ -400,7 +400,7 @@ sequenceDiagram
     participant S3 as AWS S3
 
     Browser->>Portal: POST /metadata (user data)
-    Portal->>Processor: POST /api/v1/initiate
+    Portal->>Processor: POST /api/v1/uploader/initiate
     Processor-->>Portal: {uploadId, uploadUrl, statusUrl}
     Portal-->>Browser: Form (action="{uploadUrl}")<br/>+ JavaScript handler
     
@@ -412,7 +412,7 @@ sequenceDiagram
     Note over Browser: JavaScript detects opaqueredirect<br/>Manually navigate
     Browser->>Browser: window.location = '/processing'
     Browser->>Portal: GET /processing
-    Portal->>Processor: GET /api/v1/status/{id}
+    Portal->>Processor: GET /api/v1/uploader/status/{uploadId}
     Processor-->>Portal: Status update
     Portal-->>Browser: Show processing/success
 ```
@@ -547,7 +547,7 @@ When `COGNITO_ENABLED=true`:
 
 3. **Portal calls Object Processor** with token:
    ```
-   POST /api/v1/initiate
+   POST /api/v1/uploader/initiate
    Authorization: Bearer {token}
    Content-Type: application/json
    
@@ -578,15 +578,15 @@ This repository includes two stub services that eliminate external dependencies 
 
 | Component | Endpoints | Description |
 |-----------|-----------|-------------|
-| **Object Processor** | `POST /api/v1/initiate` | Creates upload sessions, returns `{uploadId, uploadUrl, statusUrl, correlationId}` |
-| | `GET /api/v1/status/{correlationId}` | Returns upload status (`IN_PROGRESS` → `SUCCESSFUL`) |
+| **Object Processor** | `POST /api/v1/uploader/initiate` | Creates upload sessions, returns `{uploadId, uploadUrl, statusUrl, correlationId}` |
+| | `GET /api/v1/uploader/status/{uploadId}` | Returns upload status (`pending` → `success`) |
 | **CDP Uploader** | `POST /upload-and-scan/{uploadId}` | Accepts file uploads via multipart form POST |
 | | | Returns `302` redirect to processing page |
 
 **Features:**
 - ✅ In-memory storage (no database required)
 - ✅ Returns relative redirects (like real CDP Uploader)
-- ✅ Automatically marks uploads as `SUCCESSFUL` after 2 seconds
+- ✅ Automatically marks uploads as `success` after 2 seconds
 - ✅ No authentication required
 - ✅ Runs on port 3021
 - ✅ CORS enabled for browser access
@@ -690,7 +690,7 @@ cp .env.example .env
 | Variable | Default | Description | Impact |
 |----------|---------|-------------|--------|
 | `UPLOAD_MODE` | `gateway-routing` | Integration pattern to use | Determines how browser uploads are routed and whether JavaScript is required.<br/><br/>**Options:**<br/>• `gateway-routing` - Users access via gateway, uploads via gateway (no JS)<br/>• `frontend-redirect` - Users access portal directly, uploads via gateway (no JS)<br/>• `direct` - Users access portal directly, uploads direct to uploader (requires JS) |
-| `OBJECT_PROCESSOR_HOST` | `http://document-upload-stub:3021` | Object Processor API URL | Points to the service that provides `/api/v1/initiate` and `/api/v1/status` endpoints.<br/><br/>**Change to:** Real Object Processor URL for integration testing (e.g., `http://real-processor:3004`) |
+| `OBJECT_PROCESSOR_HOST` | `http://document-upload-stub:3021` | Object Processor API URL | Points to the service that provides `/api/v1/uploader/initiate` and `/api/v1/uploader/status` endpoints.<br/><br/>**Change to:** Real Object Processor URL for integration testing (e.g., `http://real-processor:3004`) |
 | `GATEWAY_URL` | `http://localhost:3019` | Gateway domain for uploads | Used in gateway-routing and frontend-redirect modes to override upload URLs.<br/><br/>**Should be:** Your infrastructure gateway domain (nginx, CloudFront, etc.) |
 | `REDIRECT_AFTER_UPLOAD` | `/document-upload/processing` | Path to redirect after upload | Where CDP Uploader redirects the browser after accepting files.<br/><br/>**Note:** In frontend-redirect mode, automatically prefixed with `/fcp-sfd-doc-upload/{client-id}` |
 | `UPLOADER_URL` | `http://document-upload-stub:3021` | CDP Uploader URL for nginx proxy | The URL nginx uses to proxy `/upload-and-scan/*` requests to the CDP Uploader. Only relevant in gateway-routing and frontend-redirect modes (nginx is not used in direct mode).<br/><br/>**Local stub (default):** `http://document-upload-stub:3021`<br/>**CDP Docker network:** `http://cdp-uploader:7337`<br/>**CDP ext-test:** `https://cdp-uploader.ext-test.cdp-int.defra.cloud` |
@@ -936,14 +936,14 @@ The portal implements a 6-step user journey following GOV.UK Design System patte
    - Service (dropdown)
 
 3. **Upload Files** (`/document-upload/upload`)
-   - Portal calls `POST /api/v1/initiate`
+   - Portal calls `POST /api/v1/uploader/initiate`
    - Receives upload URL and status URL
    - Renders form pointing to upload URL
    - User selects files and submits
 
 4. **Processing** (`/document-upload/processing`)
-   - Auto-polls `GET /api/v1/status/{correlationId}` every 3 seconds
-   - Shows `IN_PROGRESS` → `SUCCESSFUL`/`REJECTED`
+   - Auto-polls `GET /api/v1/uploader/status/{uploadId}` every 3 seconds
+   - Shows `pending` → `success`/`failure`
    - CDP Uploader performs virus scan in background
 
 5. **Success** (`/document-upload/success`)

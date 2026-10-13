@@ -15,7 +15,7 @@ export const initiatePost = {
     const uploadId = randomUUID()
     const uploaderHost = config.get('uploaderHost')
     const uploadUrl = `${uploaderHost}/upload-and-scan/${uploadId}`
-    const statusUrl = `http://document-upload-stub:3021/api/v1/status/${correlationId}`
+    const statusUrl = `/api/v1/uploader/status/${uploadId}`
 
     // Store session in memory
     uploadSessions.set(correlationId, {
@@ -23,7 +23,7 @@ export const initiatePost = {
       uploadId,
       metadata,
       redirect: redirect || '/relative-redirect',
-      status: UPLOAD_STATUS.INITIATED,
+      status: UPLOAD_STATUS.PENDING,
       createdAt: new Date().toISOString()
     })
 
@@ -40,13 +40,13 @@ export const initiatePost = {
   }
 }
 
-export const statusGet = {
+export const uploaderStatusGet = {
   method: 'GET',
-  path: '/api/v1/status/{correlationId}',
+  path: '/api/v1/uploader/status/{uploadId}',
   handler: (request, h) => {
-    const { correlationId } = request.params
+    const { uploadId } = request.params
 
-    const session = uploadSessions.get(correlationId)
+    const session = getSessionByUploadId(uploadId)
 
     if (!session) {
       return h.response({
@@ -54,7 +54,7 @@ export const statusGet = {
       }).code(404)
     }
 
-    request.logger.info({ correlationId, status: session.status }, 'Status checked')
+    request.logger.info({ uploadId, status: session.status }, 'Status checked')
 
     return h.response({
       data: {
