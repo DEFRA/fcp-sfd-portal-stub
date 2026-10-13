@@ -16,7 +16,7 @@ This stub allows developers to run the portal end-to-end locally without needing
 The stub implements all the necessary endpoints that the portal needs:
 
 ### Object Processor API Endpoints
-- `POST /api/v1/initiate` - Initiates upload session, returns upload URL and status URL
+- `POST /api/v1/uploader/initiate` - Initiates upload session, returns upload URL and status URL
 - `GET /api/v1/uploader/status/{uploadId}` - Returns upload status (pending → success)
 
 ### CDP Uploader Endpoints

@@ -79,7 +79,7 @@ The SFD Document Upload solution consists of three main components that work tog
 - **Provided by SFD team** - The central API for document uploads
 - **Responsibilities:**
   - Validate OAuth2 JWT tokens (when authentication enabled)
-  - Provide `/api/v1/initiate` endpoint to create upload sessions
+  - Provide `/api/v1/uploader/initiate` endpoint to create upload sessions
   - Provide `/api/v1/uploader/status/{uploadId}` endpoint to query upload status
   - Receive callbacks from CDP Uploader when files are scanned
   - Persist metadata to MongoDB
@@ -155,7 +155,7 @@ sequenceDiagram
 
     Browser->>Gateway: POST /metadata (user data)
     Gateway->>Portal: Route to portal
-    Portal->>Processor: POST /api/v1/initiate<br/>(metadata + redirect path)
+    Portal->>Processor: POST /api/v1/uploader/initiate<br/>(metadata + redirect path)
     Processor-->>Portal: {uploadId, uploadUrl, statusUrl}
     Note over Portal: Override uploadUrl domain<br/>to use gateway URL
     Portal-->>Gateway: Render upload form HTML
@@ -281,7 +281,7 @@ sequenceDiagram
     participant S3 as AWS S3
 
     Browser->>Portal: POST /metadata (user data)
-    Portal->>Processor: POST /api/v1/initiate<br/>(redirect: "/fcp-sfd-doc-upload/YOUR-ID/processing")
+    Portal->>Processor: POST /api/v1/uploader/initiate<br/>(redirect: "/fcp-sfd-doc-upload/YOUR-ID/processing")
     Note over Portal: Portal prepends mapper prefix<br/>to redirect path
     Processor-->>Portal: {uploadId, uploadUrl, statusUrl}
     Note over Portal: Override uploadUrl<br/>to use gateway domain
@@ -400,7 +400,7 @@ sequenceDiagram
     participant S3 as AWS S3
 
     Browser->>Portal: POST /metadata (user data)
-    Portal->>Processor: POST /api/v1/initiate
+    Portal->>Processor: POST /api/v1/uploader/initiate
     Processor-->>Portal: {uploadId, uploadUrl, statusUrl}
     Portal-->>Browser: Form (action="{uploadUrl}")<br/>+ JavaScript handler
     
@@ -547,7 +547,7 @@ When `COGNITO_ENABLED=true`:
 
 3. **Portal calls Object Processor** with token:
    ```
-   POST /api/v1/initiate
+   POST /api/v1/uploader/initiate
    Authorization: Bearer {token}
    Content-Type: application/json
    
@@ -578,7 +578,7 @@ This repository includes two stub services that eliminate external dependencies 
 
 | Component | Endpoints | Description |
 |-----------|-----------|-------------|
-| **Object Processor** | `POST /api/v1/initiate` | Creates upload sessions, returns `{uploadId, uploadUrl, statusUrl, correlationId}` |
+| **Object Processor** | `POST /api/v1/uploader/initiate` | Creates upload sessions, returns `{uploadId, uploadUrl, statusUrl, correlationId}` |
 | | `GET /api/v1/uploader/status/{uploadId}` | Returns upload status (`pending` → `success`) |
 | **CDP Uploader** | `POST /upload-and-scan/{uploadId}` | Accepts file uploads via multipart form POST |
 | | | Returns `302` redirect to processing page |
@@ -936,7 +936,7 @@ The portal implements a 6-step user journey following GOV.UK Design System patte
    - Service (dropdown)
 
 3. **Upload Files** (`/document-upload/upload`)
-   - Portal calls `POST /api/v1/initiate`
+   - Portal calls `POST /api/v1/uploader/initiate`
    - Receives upload URL and status URL
    - Renders form pointing to upload URL
    - User selects files and submits

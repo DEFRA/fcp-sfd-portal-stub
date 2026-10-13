@@ -83,7 +83,7 @@ Use structured logging with context objects.
 
 Two main API calls in [src/common/helpers/object-processor.js](../src/common/helpers/object-processor.js):
 
-1. **`initiateUpload(metadata)`** - POST `/api/v1/initiate` with business metadata, returns `{correlationId, uploadId, uploadUrl, statusUrl}`
+1. **`initiateUpload(metadata)`** - POST `/api/v1/uploader/initiate` with business metadata, returns `{correlationId, uploadId, uploadUrl, statusUrl}`
 2. **`getUploadStatus(statusUrl)`** - GET status URL to poll upload progress
 
 Both automatically include OAuth2 Bearer token when Cognito enabled (`COGNITO_ENABLED=true`).
@@ -156,7 +156,7 @@ The `document-upload-stub/` directory contains a **local development stub** that
 
 ### Stub Endpoints
 
-1. **POST `/api/v1/initiate`** - Creates upload session, returns `{correlationId, uploadId, uploadUrl, statusUrl}`
+1. **POST `/api/v1/uploader/initiate`** - Creates upload session, returns `{correlationId, uploadId, uploadUrl, statusUrl}`
 2. **GET `/api/v1/uploader/status/{uploadId}`** - Returns upload status (simulates pending → success after 2s)
 3. **POST `/upload-and-scan/{uploadId}`** - Accepts file uploads, returns 302 redirect
 

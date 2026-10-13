@@ -15,7 +15,7 @@ export const initiatePost = {
     const uploadId = randomUUID()
     const uploaderHost = config.get('uploaderHost')
     const uploadUrl = `${uploaderHost}/upload-and-scan/${uploadId}`
-    const statusUrl = `http://document-upload-stub:3021/api/v1/uploader/status/${uploadId}`
+    const statusUrl = `/api/v1/uploader/status/${uploadId}`
 
     // Store session in memory
     uploadSessions.set(correlationId, {
