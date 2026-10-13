@@ -17,7 +17,7 @@ The stub implements all the necessary endpoints that the portal needs:
 
 ### Object Processor API Endpoints
 - `POST /api/v1/initiate` - Initiates upload session, returns upload URL and status URL
-- `GET /api/v1/status/{correlationId}` - Returns upload status (IN_PROGRESS → SUCCESSFUL)
+- `GET /api/v1/uploader/status/{uploadId}` - Returns upload status (pending → success)
 
 ### CDP Uploader Endpoints
 - `POST /upload-and-scan/{uploadId}` - Accepts file uploads, returns 302 redirect
@@ -33,7 +33,7 @@ The portal is configured to use the stub by default via the `OBJECT_PROCESSOR_HO
 - Built with Hapi.js to match the project's tech stack
 - Uses in-memory storage for upload sessions
 - Simulates a 2-second delay for file scanning
-- Always marks uploads as SUCCESSFUL after the delay
+- Always marks uploads as success after the delay
 - No authentication required (suitable for local development only)
 
 ## Port
