@@ -19,7 +19,7 @@ RUN apk add --no-cache curl
 USER node
 
 COPY --chown=node:node --chmod=755 package*.json ./
-RUN npm install
+RUN npm install --allow-git=all
 COPY --chown=node:node --chmod=755 . .
 RUN npm run build:frontend
 
